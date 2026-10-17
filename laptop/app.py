@@ -179,7 +179,10 @@ def selftest(wav=None):
             ok = False
         with open(os.path.join(models, "learn", "learn.json"), encoding="utf-8") as fh:
             learn = json.load(fh)
-        out.append("learning data: %d letters, %d lessons" % (len(learn["alphabet"]), len(learn["lessons"])))
+        out.append("learning data: %d letters, %d lessons, %d phrases, %d verses" % (
+            len(learn["alphabet"]), len(learn["lessons"]), len(learn.get("phrases", [])), len(learn.get("verses", []))))
+        if len(learn.get("phrases", [])) < 50 or len(learn.get("verses", [])) < 15:
+            ok = False
         import learn_ui  # noqa: F401  (checks the Learn window is bundled)
     except Exception:
         ok = False

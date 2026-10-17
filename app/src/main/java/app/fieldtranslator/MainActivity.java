@@ -402,14 +402,23 @@ public class MainActivity extends Activity {
         seg.setOrientation(LinearLayout.HORIZONTAL);
         seg.setBackground(rounded(SURFACE, 16));
         seg.setPadding(dp(4), dp(4), dp(4), dp(4));
-        segRu = bigButton("Русский  →  English");
-        segEn = bigButton("English  →  Русский");
-        segRu.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        segEn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        // two short lines per option so it never wraps or gets clipped on narrow phones
+        segRu = bigButton("");
+        segEn = bigButton("");
+        segRu.setText(segLabel("RU  →  EN", "Russian to English"));
+        segEn.setText(segLabel("EN  →  RU", "English to Russian"));
+        for (Button b : new Button[]{segRu, segEn}) {
+            b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+            b.setMinHeight(dp(56));
+            b.setMinimumHeight(dp(56));
+            b.setPadding(dp(4), dp(8), dp(4), dp(8));
+            b.setMaxLines(2);
+            b.setLineSpacing(0, 1.05f);
+        }
         segRu.setOnClickListener(v -> { if (dir != Dir.RU_EN) toggleDirection(); });
         segEn.setOnClickListener(v -> { if (dir != Dir.EN_RU) toggleDirection(); });
-        seg.addView(segRu, new LinearLayout.LayoutParams(0, dp(52), 1f));
-        seg.addView(segEn, new LinearLayout.LayoutParams(0, dp(52), 1f));
+        seg.addView(segRu, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        seg.addView(segEn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         LinearLayout.LayoutParams segLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
         segLp.setMargins(0, dp(12), 0, dp(10));
@@ -498,6 +507,13 @@ public class MainActivity extends Activity {
         updateEmpty();
     }
 
+    private CharSequence segLabel(String big, String small) {
+        android.text.SpannableString sp = new android.text.SpannableString(big + "\n" + small);
+        sp.setSpan(new android.text.style.StyleSpan(Typeface.BOLD), 0, big.length(), 0);
+        sp.setSpan(new android.text.style.RelativeSizeSpan(0.7f), big.length() + 1, sp.length(), 0);
+        return sp;
+    }
+
     private void addChip(LinearLayout row, Button b, float weight) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(40), weight);
         lp.setMargins(dp(3), 0, dp(3), 0);
@@ -509,7 +525,9 @@ public class MainActivity extends Activity {
         b.setText(text);
         b.setAllCaps(false);
         b.setTextColor(TEXT);
-        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        b.setSingleLine(true);
+        b.setEllipsize(android.text.TextUtils.TruncateAt.END);
         b.setPadding(dp(4), 0, dp(4), 0);
         b.setMinHeight(0);
         b.setMinimumHeight(0);

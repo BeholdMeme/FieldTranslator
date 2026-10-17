@@ -55,6 +55,14 @@ public final class Pronouncer {
                 {"его", "yi-VO"}, {"сейчас", "si-CHAS"}, {"счастье", "SHAS-tye"}, {"счёт", "shyot"},
                 {"лёгкий", "LYOKH-kiy"}, {"легко", "likh-KO"}, {"мягкий", "MYAKH-kiy"},
                 {"дела", "di-LA"}, {"все", "fsye"},
+                {"до", "da"}, {"по", "pa"}, {"не", "ni"}, {"от", "at"}, {"о", "a"}, {"об", "ab"}, {"со", "sa"},
+                {"во", "va"}, {"ко", "ka"}, {"бог", "bokh"}, {"буду", "BOO-doo"}, {"него", "ni-VO"},
+                {"тобою", "ta-BO-yoo"}, {"отче", "OT-che"}, {"иисус", "i-ee-SOOS"}, {"иисусе", "i-ee-SOO-sye"},
+                {"иисуса", "i-ee-SOO-suh"}, {"господе", "GOS-puh-dye"}, {"божией", "BO-zhy-yey"},
+                {"есмь", "yesm'"}, {"сие", "si-YE"}, {"нашем", "NA-shem"},
+                {"ожидаемого", "a-zhy-DA-ye-muh-vuh"}, {"долготерпит", "duhl-ga-TYER-pit"},
+                {"превозносится", "pri-vaz-NO-si-tsuh"}, {"спасены", "spa-si-NY"},
+                {"изволению", "iz-va-LYE-ni-yoo"}, {"труждающиеся", "TROOZH-da-yoo-shi-ye-sya"},
         };
         for (String[] e : ex) EXCEPTIONS.put(e[0], e[1]);
         for (String w : new String[]{"много", "немного", "строго", "нестрого", "дорого", "недорого", "убого", "полого", "отлого"}) {
@@ -165,7 +173,7 @@ public final class Pronouncer {
         if ((w.endsWith("ого") || w.endsWith("его")) && w.length() > 3 && !OGO_KEEP_G.contains(w)) {
             w = w.substring(0, w.length() - 2) + "в" + w.charAt(w.length() - 1);
         }
-        String[][] silent = {{"вств", "ств"}, {"здн", "зн"}, {"стн", "сн"}, {"лнц", "нц"}};
+        String[][] silent = {{"вств", "ств"}, {"здн", "зн"}, {"стн", "сн"}, {"лнц", "нц"}, {"рдц", "рц"}};
         for (String[] ab : silent) {
             int off = w.indexOf(ab[0]);
             if (off >= 0) {

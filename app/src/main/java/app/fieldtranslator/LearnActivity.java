@@ -120,6 +120,20 @@ public class LearnActivity extends Activity {
             page.addView(btn, full(dp(76)));
         }
 
+        page.addView(header("Phrases & verses"));
+        JSONArray phrases = data.optJSONArray("phrases");
+        JSONArray verses = data.optJSONArray("verses");
+        if (phrases != null) {
+            Button pb = button("Common phrases   ·   " + phrases.length(), BTN, v -> showList("phrases"));
+            pb.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+            page.addView(pb, full(0));
+        }
+        if (verses != null) {
+            Button vb = button("Bible verses   ·   " + verses.length(), BTN, v -> showList("verses"));
+            vb.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+            page.addView(vb, full(0));
+        }
+
         page.addView(header("Pronunciation tips"));
         JSONArray tips = data.optJSONArray("tips");
         for (int i = 0; i < tips.length(); i++) page.addView(text("• " + tips.optString(i), 15, Color.WHITE, false));
@@ -129,6 +143,25 @@ public class LearnActivity extends Activity {
     private void showLetter(JSONObject l) {
         clear("letter");
         page.addView(back());
+        JSONArray abc = data.optJSONArray("alphabet");
+        int idx = 0;
+        for (int i = 0; i < abc.length(); i++) if (abc.optJSONObject(i).optString("upper").equals(l.optString("upper"))) idx = i;
+        final int prevIdx = (idx + abc.length() - 1) % abc.length(), nextIdx = (idx + 1) % abc.length();
+        LinearLayout nav = new LinearLayout(this);
+        nav.setOrientation(LinearLayout.HORIZONTAL);
+        Button prev = button("←  " + abc.optJSONObject(prevIdx).optString("upper"), BTN,
+                v -> showLetter(abc.optJSONObject(prevIdx)));
+        Button next = button(abc.optJSONObject(nextIdx).optString("upper") + "  →", ACCENT,
+                v -> showLetter(abc.optJSONObject(nextIdx)));
+        prev.setGravity(Gravity.CENTER);
+        next.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        nlp.setMargins(0, dp(4), dp(6), dp(4));
+        nav.addView(prev, nlp);
+        LinearLayout.LayoutParams nlp2 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        nlp2.setMargins(dp(6), dp(4), 0, dp(4));
+        nav.addView(next, nlp2);
+        page.addView(text("Letter " + (idx + 1) + " of " + abc.length(), 14, MUTED, false));
         TextView big = text(l.optString("upper") + " " + l.optString("lower"), 72, Color.WHITE, true);
         big.setGravity(Gravity.CENTER);
         page.addView(big);
@@ -136,6 +169,7 @@ public class LearnActivity extends Activity {
         page.addView(card("Sound", l.optString("sound")));
         page.addView(card("Example", l.optString("example") + "\n" + l.optString("example_pron")
                 + "\n" + l.optString("example_meaning")));
+        page.addView(nav);
     }
 
     private void showLesson(int idx) {
@@ -172,6 +206,79 @@ public class LearnActivity extends Activity {
         page.addView(answer);
         page.addView(button("Show", BTN, v -> answer.setVisibility(View.VISIBLE)), full(dp(60)));
         page.addView(button("Next  →", ACCENT, v -> showCard(lessonIdx, i + 1)), full(dp(60)));
+    }
+
+    // ------------------------------------------------------------------ phrases & verses
+
+    private void showList(String key) {
+        clear("list");
+        JSONArray items = data.optJSONArray(key);
+        boolean verses = key.equals("verses");
+        page.addView(back());
+        page.addView(title(verses ? "Bible verses" : "Common phrases"));
+        page.addView(text(verses ? "Russian Synodal translation with the King James Version. Gold = how to say it."
+                : "Gold = how to say it. The CAPITAL syllable is stressed.", 14, MUTED, false));
+        page.addView(button("Practice as flashcards", ACCENT, v -> showItemCard(key, 0, false)), full(0));
+        String lastCat = "";
+        for (int i = 0; i < items.length(); i++) {
+            JSONObject it = items.optJSONObject(i);
+            String cat = it.optString("category", "");
+            if (!cat.isEmpty() && !cat.equals(lastCat)) { page.addView(header(cat)); lastCat = cat; }
+            page.addView(itemCard(it, true));
+        }
+    }
+
+    private View itemCard(JSONObject it, boolean showAll) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setBackground(round(CARD));
+        box.setPadding(dp(16), dp(12), dp(16), dp(12));
+        String ref = it.optString("ref", "");
+        if (!ref.isEmpty()) box.addView(text(ref, 13, ACCENT, true));
+        box.addView(text(it.optString("ru"), 20, Color.WHITE, false));
+        if (showAll) {
+            box.addView(text(it.optString("pron"), 16, GOLD, false));
+            box.addView(text(it.optString("en"), 15, MUTED, false));
+        }
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, dp(5), 0, dp(5));
+        box.setLayoutParams(lp);
+        return box;
+    }
+
+    private void showItemCard(String key, int i, boolean revealed) {
+        JSONArray items = data.optJSONArray(key);
+        int n = items.length();
+        JSONObject it = items.optJSONObject(((i % n) + n) % n);
+        clear("itemcard");
+        Button backBtn = button("←  Back", BTN, v -> showList(key));
+        backBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        page.addView(backBtn);
+        page.addView(text("Card " + (((i % n) + n) % n + 1) + " of " + n + " - read it out loud, then tap Show",
+                14, MUTED, false));
+        String ref = it.optString("ref", "");
+        if (!ref.isEmpty()) page.addView(text(ref, 15, ACCENT, true));
+        TextView ru = text(it.optString("ru"), key.equals("verses") ? 24 : 32, Color.WHITE, true);
+        ru.setPadding(0, dp(16), 0, dp(16));
+        page.addView(ru);
+        final TextView ans = text(it.optString("pron") + "\n\n" + it.optString("en"), 19, GOLD, false);
+        ans.setVisibility(revealed ? View.VISIBLE : View.INVISIBLE);
+        page.addView(ans);
+        page.addView(button("Show", BTN, v -> ans.setVisibility(View.VISIBLE)), full(0));
+        LinearLayout nav = new LinearLayout(this);
+        nav.setOrientation(LinearLayout.HORIZONTAL);
+        Button prev = button("←  Previous", BTN, v -> showItemCard(key, i - 1, false));
+        Button next = button("Next  →", ACCENT, v -> showItemCard(key, i + 1, false));
+        prev.setGravity(Gravity.CENTER);
+        next.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams a = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        a.setMargins(0, dp(5), dp(6), dp(5));
+        LinearLayout.LayoutParams b = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        b.setMargins(dp(6), dp(5), 0, dp(5));
+        nav.addView(prev, a);
+        nav.addView(next, b);
+        page.addView(nav);
     }
 
     // ------------------------------------------------------------------ quiz

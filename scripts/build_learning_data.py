@@ -15,6 +15,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "laptop"))
 from pronounce import StressDict, pronounce  # noqa: E402
+from phrases_data import PHRASES, VERSES  # noqa: E402
 
 VOWELS = "аеёиоуыэюя"
 FILES = ["others", "nouns", "verbs", "adjectives"]
@@ -159,11 +160,14 @@ def main(csv_dir, out_dir):
                     break
         lessons.append({"title": title, "letters": letters.split(), "intro": intro, "words": words})
 
-    data = {"source": "Word list and stress: OpenRussian.org dictionary, CC BY-SA 4.0",
-            "tips": TIPS, "alphabet": alphabet, "lessons": lessons}
+    phrases = [{"category": c, "ru": ru, "en": en, "pron": pronounce(ru, sd)} for c, ru, en in PHRASES]
+    verses = [{"ref": ref, "ru": ru, "en": en, "pron": pronounce(ru, sd)} for ref, ru, en in VERSES]
+    data = {"source": "Word list and stress: OpenRussian.org dictionary, CC BY-SA 4.0. "
+                      "Bible verses: Russian Synodal translation and King James Version (both public domain).",
+            "tips": TIPS, "alphabet": alphabet, "lessons": lessons, "phrases": phrases, "verses": verses}
     with open(os.path.join(out_dir, "learn.json"), "w", encoding="utf-8", newline="\n") as fh:
         json.dump(data, fh, ensure_ascii=False, indent=1)
-    print("stress forms: %d, vocab: %d" % (len(lines), len(vocab)))
+    print("stress forms: %d, vocab: %d, phrases: %d, verses: %d" % (len(lines), len(vocab), len(phrases), len(verses)))
     for les in lessons:
         print(les["title"], len(les["words"]), ", ".join("%s=%s" % (x["word"], x["pron"]) for x in les["words"][:8]))
 

@@ -39,6 +39,15 @@ EXCEPTIONS = {
     "лёгкий": "LYOKH-kiy", "легко": "likh-KO", "мягкий": "MYAKH-kiy",
     # common words whose dictionary-first stress is the less common reading
     "дела": "di-LA", "все": "fsye",
+    # unstressed one-syllable prepositions/particles blend into the next word
+    "до": "da", "по": "pa", "не": "ni", "от": "at", "о": "a", "об": "ab", "со": "sa", "во": "va", "ко": "ka",
+    # words common in phrases and Bible verses that the dictionary lacks or gets wrong
+    "бог": "bokh", "буду": "BOO-doo", "него": "ni-VO", "тобою": "ta-BO-yoo", "отче": "OT-che",
+    "иисус": "i-ee-SOOS", "иисусе": "i-ee-SOO-sye", "иисуса": "i-ee-SOO-suh", "господе": "GOS-puh-dye",
+    "божией": "BO-zhy-yey", "есмь": "yesm'", "сие": "si-YE", "нашем": "NA-shem",
+    "ожидаемого": "a-zhy-DA-ye-muh-vuh", "долготерпит": "duhl-ga-TYER-pit",
+    "превозносится": "pri-vaz-NO-si-tsuh", "спасены": "spa-si-NY", "изволению": "iz-va-LYE-ni-yoo",
+    "труждающиеся": "TROOZH-da-yoo-shi-ye-sya",
 }
 # words ending in -ого/-его where г really is г
 OGO_KEEP_G = {"много", "немного", "строго", "нестрого", "дорого", "недорого", "убого", "полого", "отлого"}
@@ -112,7 +121,7 @@ def _word(word, sd):
     if (w.endswith("ого") or w.endswith("его")) and len(w) > 3 and w not in OGO_KEEP_G:
         w = w[:-2] + "в" + w[-1]
     # silent letters: здн, стн, вств, лнц
-    for a, b in (("вств", "ств"), ("здн", "зн"), ("стн", "сн"), ("лнц", "нц")):
+    for a, b in (("вств", "ств"), ("здн", "зн"), ("стн", "сн"), ("лнц", "нц"), ("рдц", "рц")):
         if a in w:
             off = w.index(a)
             if st is not None and st > off:

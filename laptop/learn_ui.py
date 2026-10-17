@@ -37,6 +37,8 @@ class LearnWindow:
 
     # ---------- widgets ----------
     def clear(self):
+        self.win.unbind("<Left>")
+        self.win.unbind("<Right>")
         for w in self.page.winfo_children():
             w.destroy()
         self.canvas.yview_moveto(0)
@@ -88,18 +90,77 @@ class LearnWindow:
             status = "not started" if best is None else "best quiz score %d/10%s" % (best, "  ✓" if best >= 8 else "")
             self.button("%d. %s\n%s   ·   %s" % (i + 1, les["title"], " ".join(les["letters"]), status),
                         lambda i=i: self.lesson(i), GOOD if (best or 0) >= 8 else BTN)
+        self.label("Phrases & verses", 15, bold=True)
+        if self.data.get("phrases"):
+            self.button("Common phrases   ·   %d" % len(self.data["phrases"]), lambda: self.item_list("phrases"))
+        if self.data.get("verses"):
+            self.button("Bible verses   ·   %d" % len(self.data["verses"]), lambda: self.item_list("verses"))
         self.label("Pronunciation tips", 15, bold=True)
         for t in self.data.get("tips", []):
             self.label("• " + t, 12)
         self.label(self.data.get("source", ""), 9, MUTED)
 
     def show_letter(self, l):
+        abc = self.data["alphabet"]
+        idx = next(i for i, x in enumerate(abc) if x["upper"] == l["upper"])
+        prev_l, next_l = abc[(idx - 1) % len(abc)], abc[(idx + 1) % len(abc)]
         self.clear()
         self.button("←  Back", self.home)
+        self.label("Letter %d of %d   (← / → keys also work)" % (idx + 1, len(abc)), 11, MUTED)
+        self.win.bind("<Left>", lambda e: self.show_letter(prev_l))
+        self.win.bind("<Right>", lambda e: self.show_letter(next_l))
         self.label(l["upper"] + " " + l["lower"], 54, bold=True, center=True)
         self.card("Name", l["name"])
         self.card("Sound", l["sound"])
         self.card("Example", "%s\n%s\n%s" % (l["example"], l["example_pron"], l["example_meaning"]))
+        nav = tk.Frame(self.page, bg=BG)
+        nav.pack(fill="x", padx=16, pady=6)
+        self.button("←  " + prev_l["upper"], lambda: self.show_letter(prev_l), parent=nav).pack(
+            side="left", fill="x", expand=True, padx=(0, 6), ipady=8)
+        self.button(next_l["upper"] + "  →", lambda: self.show_letter(next_l), ACCENT, parent=nav).pack(
+            side="left", fill="x", expand=True, padx=(6, 0), ipady=8)
+
+    def item_list(self, key):
+        self.clear()
+        verses = key == "verses"
+        self.button("←  Back", self.home)
+        self.label("Bible verses" if verses else "Common phrases", 20, bold=True)
+        self.label("Russian Synodal translation with the King James Version. Gold = how to say it." if verses
+                   else "Gold = how to say it. The CAPITAL syllable is stressed.", 11, MUTED)
+        self.button("Practice as flashcards", lambda: self.item_card(key, 0), ACCENT)
+        last = ""
+        for it in self.data[key]:
+            cat = it.get("category", "")
+            if cat and cat != last:
+                self.label(cat, 14, bold=True)
+                last = cat
+            f = tk.Frame(self.page, bg=CARD)
+            f.pack(fill="x", padx=16, pady=4)
+            if it.get("ref"):
+                tk.Label(f, text=it["ref"], bg=CARD, fg=ACCENT, font=(FONT, 10, "bold"), anchor="w").pack(
+                    fill="x", padx=12, pady=(8, 0))
+            for txt_, col, size in ((it["ru"], "white", 15), (it["pron"], GOLD, 12), (it["en"], MUTED, 11)):
+                tk.Label(f, text=txt_, bg=CARD, fg=col, font=(FONT, size), anchor="w", justify="left",
+                         wraplength=660).pack(fill="x", padx=12, pady=1)
+            tk.Frame(f, bg=CARD, height=6).pack()
+
+    def item_card(self, key, n):
+        items = self.data[key]
+        it = items[n % len(items)]
+        self.clear()
+        self.button("←  Back", lambda: self.item_list(key))
+        self.label("Card %d of %d - read it out loud, then click Show" % (n % len(items) + 1, len(items)), 11, MUTED)
+        if it.get("ref"):
+            self.label(it["ref"], 13, ACCENT, bold=True)
+        self.label(it["ru"], 18 if key == "verses" else 26, bold=True)
+        ans = self.label("", 15, GOLD)
+        self.button("Show", lambda: ans.configure(text="%s\n\n%s" % (it["pron"], it["en"])))
+        nav = tk.Frame(self.page, bg=BG)
+        nav.pack(fill="x", padx=16, pady=6)
+        self.button("←  Previous", lambda: self.item_card(key, n - 1), parent=nav).pack(
+            side="left", fill="x", expand=True, padx=(0, 6), ipady=8)
+        self.button("Next  →", lambda: self.item_card(key, n + 1), ACCENT, parent=nav).pack(
+            side="left", fill="x", expand=True, padx=(6, 0), ipady=8)
 
     def lesson(self, i):
         les = self.data["lessons"][i]
