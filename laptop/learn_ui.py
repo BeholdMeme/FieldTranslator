@@ -18,7 +18,7 @@ class LearnWindow:
         self.settings.setdefault("best", {})
         self.win = tk.Toplevel(root)
         self.win.title("Learn to read Russian")
-        self.win.geometry("760x820")
+        self.win.geometry("760x%d" % max(480, min(820, self.win.winfo_screenheight() - 90)))
         self.win.configure(bg=BG)
         # scrollable page
         canvas = tk.Canvas(self.win, bg=BG, highlightthickness=0)

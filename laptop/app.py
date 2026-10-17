@@ -235,8 +235,10 @@ def run_gui():
 
     root = tk.Tk()
     root.title("Field Translator")
-    root.geometry("760x860")
-    root.minsize(560, 640)
+    # fit the window to the screen (laptops with display scaling have little vertical room)
+    sh = root.winfo_screenheight()
+    root.geometry("760x%d" % max(520, min(860, sh - 90)))
+    root.minsize(520, 480)
     root.configure(bg=BG)
 
     def chip(parent, text, cmd, width=None):
@@ -264,8 +266,7 @@ def run_gui():
     seg_en.pack(side="left", fill="x", expand=True, ipady=10)
 
     # conversation
-    body = tk.Frame(root, bg=SURF)
-    body.pack(fill="both", expand=True, padx=20)
+    body = tk.Frame(root, bg=SURF)   # packed last (below) so it is what shrinks
     txt = tk.Text(body, bg=SURF, fg=TEXT, wrap="word", bd=0, padx=18, pady=12, highlightthickness=0,
                   insertbackground=TEXT, selectbackground=BORDER, cursor="arrow")
     sb = tk.Scrollbar(body, command=txt.yview, width=10, bd=0, troughcolor=SURF)
@@ -282,14 +283,14 @@ def run_gui():
     status_var = tk.StringVar(value="Starting…")
     partial_lbl = tk.Label(root, textvariable=partial_var, bg=BG, fg="#B7BEC9",
                            wraplength=700, justify="left", anchor="w")
-    partial_lbl.pack(fill="x", padx=22, pady=(8, 0))
+
     preview_lbl = tk.Label(root, textvariable=preview_var, bg=BG, fg=CYAN,
                            wraplength=700, justify="left", anchor="w")
-    preview_lbl.pack(fill="x", padx=22)
+
 
     # control panel
     panel = tk.Frame(root, bg=SURF, padx=14, pady=12)
-    panel.pack(fill="x", padx=20, pady=(8, 18))
+    panel.pack(side="bottom", fill="x", padx=20, pady=(8, 14))
     tk.Label(panel, textvariable=status_var, bg=SURF, fg=MUTED, font=(F, 10), wraplength=680).pack(pady=(0, 8))
 
     mic_row = tk.Frame(panel, bg=SURF)
@@ -331,7 +332,11 @@ def run_gui():
 
     listen_btn = tk.Button(panel, font=(F, 18, "bold"), fg="white", bd=0, activeforeground="white",
                            command=lambda: toggle_listen(), cursor="hand2")
-    listen_btn.pack(fill="x", pady=(12, 0), ipady=14)
+    listen_btn.pack(fill="x", pady=(12, 0), ipady=12)
+    # live text sits just above the panel; the conversation takes whatever space is left
+    preview_lbl.pack(side="bottom", fill="x", padx=22)
+    partial_lbl.pack(side="bottom", fill="x", padx=22, pady=(8, 0))
+    body.pack(fill="both", expand=True, padx=20)
 
     def apply_fonts():
         s = state["scale"]
