@@ -1,0 +1,63 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'app.fieldtranslator'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'app.fieldtranslator'
+        minSdk 24          // Android 7.0+ (covers nearly every phone in use, incl. Huawei EMUI/HarmonyOS 2-4)
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+        // one universal APK: old 32-bit phones, 64-bit phones and x86 devices
+        ndk { abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64' }
+    }
+
+    signingConfigs {
+        release {
+            storeFile file('release.keystore')
+            storePassword 'fieldtranslator'
+            keyAlias 'fieldtranslator'
+            keyPassword 'fieldtranslator'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+        debug {
+            signingConfig signingConfigs.release   // same signature -> builds can update each other
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    androidResources {
+        noCompress 'onnx'
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+
+    packaging {
+        // extract .so files at install time: most compatible option for JNA (used by Vosk)
+        jniLibs { useLegacyPackaging true }
+    }
+}
+
+dependencies {
+    implementation project(':core')
+    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.20.0'
+    implementation 'com.alphacephei:vosk-android:0.3.47@aar'
+    implementation 'net.java.dev.jna:jna:5.13.0@aar'
+}

@@ -1,0 +1,13 @@
+# models are downloaded by scripts/fetch_models.sh (too big for git)
+app/src/main/assets/asr/
+app/src/main/assets/mt/
+app/src/main/assets/models_size.txt
+.model-cache/
+build/
+*/build/
+.gradle/
+local.properties
+.idea/
+*.iml
+__pycache__/
+dist/

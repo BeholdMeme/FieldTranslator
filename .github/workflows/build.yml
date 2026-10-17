@@ -1,0 +1,143 @@
+name: Build translator
+
+# Runs on every push and can be started by hand (Actions tab -> Build translator -> Run workflow).
+# Produces: FieldTranslator.apk (Android) and FieldTranslator-Windows.zip (laptop),
+# published on the repo's Releases page under "latest".
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Cache downloaded models
+        uses: actions/cache@v4
+        with:
+          path: .model-cache
+          key: models-v1-${{ hashFiles('scripts/fetch_models.sh') }}
+
+      - name: Python tools
+        run: pip install onnxruntime==1.20.0 "numpy<2.3" sentencepiece==0.2.0 transformers==4.46.3
+
+      - name: Download and prepare models
+        run: scripts/fetch_models.sh
+
+      - name: Check translation quality + build reference outputs (Python)
+        run: |
+          python scripts/make_reference.py core/src/test/resources/tiny ru-en core/src/test/resources/tiny/reference.tsv --no-sanity
+          python scripts/make_reference.py app/src/main/assets/mt/ru-en ru-en build/ref/ru-en.tsv --hf .model-cache/opus-mt-ru-en
+          python scripts/make_reference.py app/src/main/assets/mt/en-ru en-ru build/ref/en-ru.tsv --hf .model-cache/opus-mt-en-ru
+
+      - name: Check the phone code gives identical results (Java)
+        run: >
+          ./gradlew :core:test --no-daemon
+          "-PmtCases=$PWD/app/src/main/assets/mt/ru-en::$PWD/build/ref/ru-en.tsv;$PWD/app/src/main/assets/mt/en-ru::$PWD/build/ref/en-ru.tsv"
+
+      - name: Build APK
+        run: ./gradlew :app:assembleRelease --no-daemon
+
+      - name: Check APK contents
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          ls -la "$APK"
+          unzip -l "$APK" | grep -E "lib/(armeabi-v7a|arm64-v8a|x86|x86_64)/lib(vosk|onnxruntime|jnidispatch)" 
+          for abi in armeabi-v7a arm64-v8a x86 x86_64; do
+            unzip -l "$APK" | grep -q "lib/$abi/libvosk.so" || { echo "missing vosk for $abi"; exit 1; }
+            unzip -l "$APK" | grep -q "lib/$abi/libonnxruntime.so" || { echo "missing onnxruntime for $abi"; exit 1; }
+          done
+          unzip -l "$APK" | grep -q "assets/mt/en-ru/decoder.onnx" || { echo "models missing"; exit 1; }
+          cp "$APK" FieldTranslator.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FieldTranslator-apk
+          path: FieldTranslator.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: models
+          path: app/src/main/assets
+          retention-days: 3
+
+  windows:
+    needs: android
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: models
+          path: models
+
+      - name: Build laptop app
+        shell: bash
+        run: |
+          pip install -r laptop/requirements.txt pyinstaller==6.11.1
+          pyinstaller --noconfirm --windowed --name FieldTranslator \
+            --collect-all vosk --collect-all sounddevice --collect-binaries onnxruntime \
+            --paths laptop laptop/app.py
+          cp -r models dist/FieldTranslator/models
+          rm -f dist/FieldTranslator/models/models_size.txt
+          cp laptop/README-laptop.txt dist/FieldTranslator/README.txt
+
+      - name: Self-test the built app
+        shell: pwsh
+        run: |
+          cd dist/FieldTranslator
+          Start-Process -FilePath .\FieldTranslator.exe -ArgumentList '--selftest' -Wait -NoNewWindow
+          Get-Content selftest.txt
+          if (-not (Select-String -Path selftest.txt -Pattern 'SELFTEST PASSED' -Quiet)) { exit 1 }
+          Remove-Item selftest.txt
+
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path dist/FieldTranslator -DestinationPath FieldTranslator-Windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FieldTranslator-windows
+          path: FieldTranslator-Windows.zip
+
+  release:
+    needs: [android, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+      - name: Publish "latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest -y --cleanup-tag || true
+          gh release create latest \
+            out/FieldTranslator-apk/FieldTranslator.apk \
+            out/FieldTranslator-windows/FieldTranslator-Windows.zip \
+            --title "Latest build ($(date -u +%Y-%m-%d))" \
+            --notes "Android: download FieldTranslator.apk on the phone and open it (allow 'install unknown apps'). Laptop: unzip FieldTranslator-Windows.zip and run FieldTranslator.exe. Both work fully offline."

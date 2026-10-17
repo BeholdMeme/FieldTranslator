@@ -1,0 +1,29 @@
+plugins {
+    id 'java-library'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+def ortVersion = '1.20.0'
+
+dependencies {
+    // The Android app supplies onnxruntime-android (same API) at runtime.
+    compileOnly "com.microsoft.onnxruntime:onnxruntime:$ortVersion"
+    testImplementation "com.microsoft.onnxruntime:onnxruntime:$ortVersion"
+    testImplementation 'junit:junit:4.13.2'
+}
+
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+
+test {
+    systemProperty 'mt.cases', (project.findProperty('mtCases') ?: '')
+    maxHeapSize = '2g'
+    testLogging {
+        events 'passed', 'failed'
+        showStandardStreams = true
+        exceptionFormat = 'full'
+    }
+}
