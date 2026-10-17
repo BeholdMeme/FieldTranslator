@@ -405,8 +405,8 @@ public class MainActivity extends Activity {
         // two short lines per option so it never wraps or gets clipped on narrow phones
         segRu = bigButton("");
         segEn = bigButton("");
-        segRu.setText(segLabel("RU  →  EN", "Russian to English"));
-        segEn.setText(segLabel("EN  →  RU", "English to Russian"));
+        segRu.setText(segLabel("Русский", "→  English"));
+        segEn.setText(segLabel("English", "→  Русский"));
         for (Button b : new Button[]{segRu, segEn}) {
             b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
             b.setMinHeight(dp(56));
@@ -510,7 +510,7 @@ public class MainActivity extends Activity {
     private CharSequence segLabel(String big, String small) {
         android.text.SpannableString sp = new android.text.SpannableString(big + "\n" + small);
         sp.setSpan(new android.text.style.StyleSpan(Typeface.BOLD), 0, big.length(), 0);
-        sp.setSpan(new android.text.style.RelativeSizeSpan(0.7f), big.length() + 1, sp.length(), 0);
+        sp.setSpan(new android.text.style.RelativeSizeSpan(0.82f), big.length() + 1, sp.length(), 0);
         return sp;
     }
 
