@@ -39,6 +39,39 @@ def find_models():
                      "(or run scripts/fetch_models.sh in the repo).")
 
 
+def list_mics():
+    """Input devices, system default first. Uses the MME host API on Windows when
+    available (it resamples, so any rate works)."""
+    try:
+        import sounddevice as sd
+        devs = sd.query_devices()
+        apis = sd.query_hostapis()
+        default_in = sd.default.device[0]
+    except Exception:
+        return [], []
+    preferred_api = None
+    for i, a in enumerate(apis):
+        if "MME" in a["name"]:
+            preferred_api = i
+    names, ids, seen = [], [], set()
+    order = sorted(range(len(devs)), key=lambda i: (i != default_in, devs[i]["hostapi"] != preferred_api))
+    for i in order:
+        d = devs[i]
+        if d["max_input_channels"] < 1:
+            continue
+        if preferred_api is not None and d["hostapi"] != preferred_api and i != default_in:
+            continue
+        label = d["name"].strip()
+        if i == default_in:
+            label += "  (Windows default)" if sys.platform == "win32" else "  (default)"
+        if label in seen:
+            continue
+        seen.add(label)
+        names.append(label)
+        ids.append(i)
+    return names, ids
+
+
 class Engine:
     """Loads one direction at a time (keeps memory low)."""
 
@@ -168,6 +201,30 @@ def run_gui():
         tk.Button(tools, text=label, command=cmd, bg="#2A2F36", fg="white", bd=0,
                   font=("Segoe UI", 12), activebackground="#3A3F46").pack(side="left", expand=True,
                                                                           fill="x", padx=4, ipady=6)
+    mic_row = tk.Frame(root, bg="#101214")
+    mic_row.pack(fill="x", padx=12, pady=(8, 0))
+    tk.Label(mic_row, text="Mic:", bg="#101214", fg="#8A9099").pack(side="left")
+    mic_names, mic_ids = list_mics()
+    mic_var = tk.StringVar(value=mic_names[0] if mic_names else "(no microphone found)")
+    mic_menu = tk.OptionMenu(mic_row, mic_var, *(mic_names or ["(no microphone found)"]),
+                             command=lambda _v: restart_if_listening())
+    mic_menu.configure(bg="#2A2F36", fg="white", activebackground="#3A3F46", activeforeground="white",
+                       highlightthickness=0, bd=0, anchor="w")
+    mic_menu["menu"].configure(bg="#2A2F36", fg="white")
+    mic_menu.pack(side="left", fill="x", expand=True, padx=(6, 8))
+    meter = tk.Canvas(mic_row, width=140, height=14, bg="#2A2F36", highlightthickness=0)
+    meter.pack(side="right")
+    meter_bar = meter.create_rectangle(0, 0, 0, 14, fill="#43A047", width=0)
+
+    def mic_choice():
+        name = mic_var.get()
+        return mic_ids[mic_names.index(name)] if name in mic_names else None
+
+    def restart_if_listening():
+        if state["listening"]:
+            stop_listening()
+            start_listening()
+
     listen_btn = tk.Button(root, font=("Segoe UI", 22, "bold"), fg="white", bd=0, activeforeground="white",
                            command=lambda: toggle_listen())
     listen_btn.pack(fill="x", padx=12, pady=12, ipady=18)
@@ -243,37 +300,58 @@ def run_gui():
             return
         import sounddevice as sd
         from vosk import KaldiRecognizer
-        rec = KaldiRecognizer(engine.asr_model, SAMPLE_RATE)
+        dev = mic_choice()
+        try:
+            info = sd.query_devices(dev, "input")
+            rate = int(info["default_samplerate"]) or SAMPLE_RATE
+        except Exception as e:
+            status_var.set("Microphone error: %s" % e)
+            return
+        # Vosk resamples internally, so record at the mic's own rate (most compatible)
+        rec = KaldiRecognizer(engine.asr_model, rate)
         audio = queue.Queue()
         stop = threading.Event()
         pair = state["pair"]
+        state["level"] = 0.0
+        state["peak_since_start"] = 0
+        state["listen_started"] = time.time()
 
         def cb(indata, frames, t, status):
-            audio.put(bytes(indata))
+            data = bytes(indata)
+            if data:
+                samples = memoryview(data).cast("h")
+                peak = max(abs(min(samples)), abs(max(samples)))
+                state["level"] = peak / 32768.0
+                if peak > state["peak_since_start"]:
+                    state["peak_since_start"] = peak
+            audio.put(data)
 
         try:
-            stream = sd.RawInputStream(samplerate=SAMPLE_RATE, blocksize=4000, dtype="int16",
-                                       channels=1, callback=cb)
+            stream = sd.RawInputStream(samplerate=rate, blocksize=int(rate * 0.1), dtype="int16",
+                                       channels=1, callback=cb, device=dev)
             stream.start()
         except Exception as e:
             status_var.set("Microphone error: %s" % e)
             return
 
         def loop():
-            while not stop.is_set():
-                try:
-                    data = audio.get(timeout=0.2)
-                except queue.Empty:
-                    continue
-                if rec.AcceptWaveform(data):
-                    events.put(("final", (pair, json.loads(rec.Result()).get("text", ""))))
-                else:
-                    events.put(("partial", (pair, json.loads(rec.PartialResult()).get("partial", ""))))
-            events.put(("final", (pair, json.loads(rec.FinalResult()).get("text", ""))))
+            try:
+                while not stop.is_set():
+                    try:
+                        data = audio.get(timeout=0.2)
+                    except queue.Empty:
+                        continue
+                    if rec.AcceptWaveform(data):
+                        events.put(("final", (pair, json.loads(rec.Result()).get("text", ""))))
+                    else:
+                        events.put(("partial", (pair, json.loads(rec.PartialResult()).get("partial", ""))))
+                events.put(("final", (pair, json.loads(rec.FinalResult()).get("text", ""))))
+            except Exception as e:
+                events.put(("status", "Speech recognizer error: %s" % e))
 
         th = threading.Thread(target=loop, daemon=True)
         th.start()
-        state.update(listening=True, stream=stream, stop=stop, rec_thread=th)
+        state.update(listening=True, stream=stream, stop=stop, rec_thread=th, silence_warned=False)
         status_var.set("Listening… " + DIRS[pair]["hint"].lower())
         refresh()
 
@@ -347,6 +425,13 @@ def run_gui():
 
     def pump():
         drain_events()
+        lvl = state.get("level", 0.0) if state["listening"] else 0.0
+        meter.coords(meter_bar, 0, 0, int(140 * min(1.0, lvl * 4)), 14)
+        if (state["listening"] and time.time() - state.get("listen_started", 0) > 2.5
+                and state.get("peak_since_start", 1) < 30 and not state.get("silence_warned")):
+            state["silence_warned"] = True
+            status_var.set("The microphone is sending silence. Pick another Mic above, or check Windows "
+                           "Settings > Privacy > Microphone > 'Let desktop apps access your microphone'.")
         root.after(50, pump)
 
     root.bind("<space>", lambda e: toggle_listen())
