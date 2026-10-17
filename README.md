@@ -17,7 +17,7 @@ the repo's **Releases** page under `latest`:
 
 | File | For |
 |---|---|
-| `FieldTranslator.apk` | Any Android 7+ phone (Samsung, Xiaomi, Realme, Orbic, Huawei EMUI / HarmonyOS 2–4) |
+| `FieldTranslator.apk` | Any ARM Android 7+ phone (Samsung, Xiaomi, Realme, Orbic, Huawei EMUI / HarmonyOS 2–4) |
 | `FieldTranslator-Windows.zip` | Windows 10/11 laptop. Unzip, run `FieldTranslator.exe` |
 
 **Install on a phone:** copy the APK over (USB cable, SD card, USB-C stick, or download it)
@@ -31,7 +31,8 @@ HarmonyOS NEXT / 5+ (they can't run Android apps). Use the laptop version there.
 
 | Part | Tech | Size |
 |---|---|---|
-| Speech → text | [Vosk](https://alphacephei.com/vosk/) small models (`ru-0.22`, `en-us-0.15`), streaming | 45 + 40 MB |
+| Speech → text (Russian) | [alphacep small streaming Zipformer](https://huggingface.co/alphacep/vosk-model-small-streaming-ru) (int8) via [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) | ~28 MB |
+| Speech → text (English) | [Vosk](https://alphacephei.com/vosk/) small model `en-us-0.15`, streaming | 40 MB |
 | Text → text | [Opus-MT](https://github.com/Helsinki-NLP/Opus-MT) `ru-en` / `en-ru`, int8 ONNX, ONNX Runtime | ~110 MB each |
 | App | Plain Java Android app (no AndroidX), Python/Tk on the laptop | |
 
@@ -60,7 +61,8 @@ scripts/    fetch_models.sh (downloads models), prepare_mt.py, make_reference.py
 2. Field phrases translate sensibly in both directions (e.g. "где находится вокзал" → contains "station").
 3. The Java (phone) code reproduces the Python results **token for token** on the real models.
 4. The tokenizer matches SentencePiece on 800+ tricky strings.
-5. The APK contains the native libraries for all four CPU types and all models.
+5. The APK contains the native libraries for every phone CPU type and all models.
+7. Russian speech recognition is run on a real Russian recording in Python and in the phone's Java code; both must produce the same text.
 6. The built Windows app runs a self-test (loads models, translates both directions).
 
 ## Building locally (optional)

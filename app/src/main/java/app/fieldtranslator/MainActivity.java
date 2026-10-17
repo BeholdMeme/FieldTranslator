@@ -26,11 +26,6 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import org.json.JSONObject;
-import org.vosk.Model;
-import org.vosk.Recognizer;
-import org.vosk.android.RecognitionListener;
-import org.vosk.android.SpeechService;
 
 import java.io.File;
 import java.util.concurrent.ExecutorService;
@@ -42,14 +37,14 @@ import app.translator.core.MarianTranslator;
 /**
  * One screen:  [ direction toggle ]  [ transcript + translations ]  [ LISTEN ]
  *
- * Speech -> text: Vosk small model for the selected language (streaming, live partials)
+ * Speech -> text: Russian = streaming Zipformer (sherpa-onnx), English = Vosk small model
  * Text -> text:   Opus-MT through ONNX Runtime (on each pause, plus live previews)
  * Everything runs on the phone. Only one language's models are in memory at a time.
  */
 public class MainActivity extends Activity {
 
     enum Dir {
-        RU_EN("ru", "mt/ru-en", "RUSSIAN  →  ENGLISH", "speak Russian", 0xFFC62828),
+        RU_EN("ru-zipformer", "mt/ru-en", "RUSSIAN  →  ENGLISH", "speak Russian", 0xFFC62828),
         EN_RU("en", "mt/en-ru", "ENGLISH  →  RUSSIAN", "speak English", 0xFF1565C0);
 
         final String asr, mt, label, hint;
@@ -62,7 +57,6 @@ public class MainActivity extends Activity {
         Dir other() { return this == RU_EN ? EN_RU : RU_EN; }
     }
 
-    private static final float SAMPLE_RATE = 16000f;
     private static final int REQ_MIC = 1;
     private static final int MAX_ENTRIES = 150;
 
@@ -72,16 +66,15 @@ public class MainActivity extends Activity {
     private final AtomicInteger pendingJobs = new AtomicInteger();
 
     // engine state (touched only on the worker thread)
-    private Model asrModel;
+    private SpeechEngine asrEngine;
     private MarianTranslator translator;
     private Dir loadedDir;
 
     // UI-thread state
     private Dir dir = Dir.RU_EN;
     private boolean installed, ready, listening, resumeAfterLoad;
-    private Model readyModel;   // the model the UI may use for new recognizers
-    private SpeechService speech;
-    private Recognizer recognizer;
+    private SpeechEngine readyEngine;   // the engine the UI may open sessions on
+    private MicCapture mic;
     private long lastPreviewAt;
     private String lastPreviewSrc = "";
     private float textScale = 1f;
@@ -89,6 +82,7 @@ public class MainActivity extends Activity {
     // views
     private Button dirButton, listenButton;
     private TextView status, partialView, previewView;
+    private View levelBar;
     private LinearLayout log;
     private ScrollView scroll;
 
@@ -159,7 +153,7 @@ public class MainActivity extends Activity {
     /** UI thread: (re)load models for a direction on the worker. */
     private void loadDirection(Dir target) {
         ready = false;
-        readyModel = null;
+        readyEngine = null;
         refreshUi();
         setStatus("Loading " + (target == Dir.RU_EN ? "Russian" : "English") + " models…");
         submit(() -> {
@@ -168,7 +162,10 @@ public class MainActivity extends Activity {
                     releaseEngine();
                     File root = ModelInstaller.root(this);
                     long t0 = SystemClock.elapsedRealtime();
-                    asrModel = new Model(new File(root, "asr/" + target.asr).getAbsolutePath());
+                    File asrDir = new File(root, "asr/" + target.asr);
+                    asrEngine = target == Dir.RU_EN
+                            ? new SpeechEngine.Zipformer(asrDir, 2)
+                            : new SpeechEngine.Vosk(asrDir);
                     int threads = Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors()));
                     translator = new MarianTranslator(new File(root, target.mt), threads);
                     translator.translate("ok");   // warm-up so the first real phrase is fast
@@ -176,10 +173,10 @@ public class MainActivity extends Activity {
                     android.util.Log.i("FieldTranslator", "loaded " + target + " in "
                             + (SystemClock.elapsedRealtime() - t0) + " ms");
                 }
-                final Model m = asrModel;
+                final SpeechEngine e = asrEngine;
                 ui.post(() -> {
                     if (dir != target) return;   // user toggled again meanwhile
-                    readyModel = m;
+                    readyEngine = e;
                     ready = true;
                     setStatus("Ready. Tap LISTEN and " + target.hint + ".");
                     refreshUi();
@@ -197,7 +194,7 @@ public class MainActivity extends Activity {
 
     private void releaseEngine() {
         if (translator != null) { translator.close(); translator = null; }
-        if (asrModel != null) { asrModel.close(); asrModel = null; }
+        if (asrEngine != null) { asrEngine.close(); asrEngine = null; }
         loadedDir = null;
     }
 
@@ -232,66 +229,62 @@ public class MainActivity extends Activity {
     // ------------------------------------------------------------------ listening (UI thread)
 
     private void startListening() {
-        if (!ready || listening || readyModel == null) return;
+        if (!ready || listening || readyEngine == null) return;
         if (Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.RECORD_AUDIO)
                 != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
             return;
         }
+        final Dir d = dir;
         try {
-            recognizer = new Recognizer(readyModel, SAMPLE_RATE);
-            speech = new SpeechService(recognizer, SAMPLE_RATE);
-            speech.startListening(new Listener(dir));
+            SpeechEngine.Session session = readyEngine.open();
+            mic = new MicCapture(session, ui, new MicCapture.Callback() {
+                @Override public void partial(String text) {
+                    if (d != dir || !listening) return;
+                    partialView.setText(text);
+                    partialView.setVisibility(text.isEmpty() ? View.GONE : View.VISIBLE);
+                    maybePreview(d, text);
+                }
+                @Override public void fin(String text) { finalText(d, text); }
+                @Override public void level(float lvl) { if (listening) setLevel(lvl); }
+                @Override public void silent() {
+                    setStatus("The microphone is sending silence. Check that no other app is using it, "
+                            + "and that the phone's mic isn't covered or muted.");
+                }
+                @Override public void error(String message) {
+                    setStatus(message);
+                    stopListening();
+                }
+            });
+            mic.start();
             listening = true;
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             setStatus("Listening… " + dir.hint);
         } catch (Exception e) {
-            cleanupSpeech();
+            mic = null;
             setStatus("Microphone error: " + e.getMessage());
         }
         refreshUi();
     }
 
     private void stopListening() {
-        if (speech != null) {
-            speech.stop();   // posts the last (final) result to this thread's queue
+        if (mic != null) {
+            mic.shutdown();   // the last phrase is posted to this thread's queue before it returns
+            mic = null;
         }
-        cleanupSpeech();
         if (listening) {
             listening = false;
+            setLevel(0);
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             if (ready) setStatus("Stopped. Tap LISTEN to continue.");
         }
         refreshUi();
     }
 
-    private void cleanupSpeech() {
-        if (speech != null) { speech.shutdown(); speech = null; }
-        if (recognizer != null) { recognizer.close(); recognizer = null; }
-    }
-
-    private final class Listener implements RecognitionListener {
-        private final Dir d;
-        Listener(Dir d) { this.d = d; }
-
-        @Override public void onPartialResult(String hypothesis) {
-            String text = field(hypothesis, "partial");
-            if (d != dir) return;
-            partialView.setText(text);
-            partialView.setVisibility(text.isEmpty() ? View.GONE : View.VISIBLE);
-            maybePreview(d, text);
-        }
-
-        @Override public void onResult(String hypothesis) { finalText(d, field(hypothesis, "text")); }
-
-        @Override public void onFinalResult(String hypothesis) { finalText(d, field(hypothesis, "text")); }
-
-        @Override public void onError(Exception e) {
-            setStatus("Microphone error: " + e.getMessage());
-            stopListening();
-        }
-
-        @Override public void onTimeout() { stopListening(); }
+    private void setLevel(float lvl) {
+        if (levelBar == null) return;
+        levelBar.setPivotX(0);
+        levelBar.setScaleX(Math.max(0f, Math.min(1f, lvl * 4f)));
     }
 
     /** While someone is still talking, show a rough live translation of what's heard so far. */
@@ -317,14 +310,6 @@ public class MainActivity extends Activity {
         if (text.trim().isEmpty()) return;
         final TextView[] entry = addEntry(d, text);
         translateAsync(d, text, res -> entry[1].setText(res.isEmpty() ? "—" : res));
-    }
-
-    private static String field(String json, String key) {
-        try {
-            return new JSONObject(json).optString(key, "").trim();
-        } catch (Exception e) {
-            return "";
-        }
     }
 
     // ------------------------------------------------------------------ UI
@@ -394,6 +379,17 @@ public class MainActivity extends Activity {
         status.setGravity(Gravity.CENTER);
         status.setPadding(0, dp(6), 0, dp(6));
         root.addView(status);
+
+        levelBar = new View(this);
+        android.widget.FrameLayout levelBox = new android.widget.FrameLayout(this);
+        levelBox.setBackgroundColor(0xFF2A2F36);
+        levelBar.setBackgroundColor(0xFF43A047);
+        levelBox.addView(levelBar, new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(6));
+        llp.setMargins(dp(4), 0, dp(4), dp(8));
+        root.addView(levelBox, llp);
+        setLevel(0);
 
         LinearLayout tools = new LinearLayout(this);
         tools.setOrientation(LinearLayout.HORIZONTAL);

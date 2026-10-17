@@ -40,7 +40,7 @@ jobs:
           key: models-v1-${{ hashFiles('scripts/fetch_models.sh') }}
 
       - name: Python tools
-        run: pip install onnxruntime==1.20.0 "numpy<2.3" sentencepiece==0.2.0 transformers==4.46.3
+        run: pip install onnxruntime==1.20.0 "numpy<2.3" sentencepiece==0.2.0 transformers==4.46.3 sherpa-onnx==1.13.8
 
       - name: Download and prepare models
         run: scripts/fetch_models.sh
@@ -51,23 +51,35 @@ jobs:
           python scripts/make_reference.py app/src/main/assets/mt/ru-en ru-en build/ref/ru-en.tsv --hf .model-cache/opus-mt-ru-en
           python scripts/make_reference.py app/src/main/assets/mt/en-ru en-ru build/ref/en-ru.tsv --hf .model-cache/opus-mt-en-ru
 
+      - name: Check Russian speech recognition (Python)
+        run: python scripts/check_asr.py app/src/main/assets/asr/ru-zipformer .model-cache/ru-zipformer/test.wav build/ref/asr-ru.txt
+
       - name: Check the phone code gives identical results (Java)
-        run: >
-          ./gradlew :core:test --no-daemon
-          "-PmtCases=$PWD/app/src/main/assets/mt/ru-en::$PWD/build/ref/ru-en.tsv;$PWD/app/src/main/assets/mt/en-ru::$PWD/build/ref/en-ru.tsv"
+        run: |
+          set -o pipefail
+          ./gradlew :core:test --no-daemon \
+            "-PmtCases=$PWD/app/src/main/assets/mt/ru-en::$PWD/build/ref/ru-en.tsv;$PWD/app/src/main/assets/mt/en-ru::$PWD/build/ref/en-ru.tsv" \
+            "-PasrCase=$PWD/app/src/main/assets/asr/ru-zipformer::$PWD/.model-cache/ru-zipformer/test.wav::$PWD/build/ref/asr-ru.txt" \
+            2>&1 | tee test.log || { grep -E "error:|FAILED|expected|Exception|What went wrong" -A2 test.log | head -40 | sed 's/^/::error::/'; exit 1; }
+          grep -E "Russian ASR|cases identical" test.log | sed 's/^/::notice::/' || true
 
       - name: Build APK
-        run: ./gradlew :app:assembleRelease --no-daemon
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleRelease --no-daemon 2>&1 | tee build.log || {
+            grep -E "error:|warning: \[|FAILED|What went wrong|Could not" -A3 build.log | head -60 | sed 's/^/::error::/'; exit 1; }
 
       - name: Check APK contents
         run: |
           APK=app/build/outputs/apk/release/app-release.apk
           ls -la "$APK"
-          unzip -l "$APK" | grep -E "lib/(armeabi-v7a|arm64-v8a|x86|x86_64)/lib(vosk|onnxruntime|jnidispatch)" 
-          for abi in armeabi-v7a arm64-v8a x86 x86_64; do
-            unzip -l "$APK" | grep -q "lib/$abi/libvosk.so" || { echo "missing vosk for $abi"; exit 1; }
-            unzip -l "$APK" | grep -q "lib/$abi/libonnxruntime.so" || { echo "missing onnxruntime for $abi"; exit 1; }
+          unzip -l "$APK" | grep -E "lib/.*\.so"
+          for abi in armeabi-v7a arm64-v8a x86_64; do
+            for lib in libvosk.so libonnxruntime.so libsherpa-onnx-jni.so libjnidispatch.so; do
+              unzip -l "$APK" | grep -q "lib/$abi/$lib" || { echo "::error::missing $lib for $abi"; exit 1; }
+            done
           done
+          unzip -l "$APK" | grep -q "assets/asr/ru-zipformer/encoder.int8.onnx" || { echo "::error::Russian speech model missing"; exit 1; }
           unzip -l "$APK" | grep -q "assets/mt/en-ru/decoder.onnx" || { echo "models missing"; exit 1; }
           cp "$APK" FieldTranslator.apk
 
@@ -80,6 +92,12 @@ jobs:
         with:
           name: models
           path: app/src/main/assets
+          retention-days: 3
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: testdata
+          path: .model-cache/ru-zipformer/test.wav
           retention-days: 3
 
   windows:
@@ -98,6 +116,11 @@ jobs:
           name: models
           path: models
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: testdata
+          path: testdata
+
       - name: Build laptop app
         shell: bash
         run: |
@@ -105,7 +128,7 @@ jobs:
           # console build with the console hidden at start: no black window for the user,
           # but stdout/stderr still work for the CI self-test
           pyinstaller --noconfirm --console --hide-console hide-early --name FieldTranslator \
-            --collect-all vosk --collect-all sounddevice --collect-binaries onnxruntime \
+            --collect-all vosk --collect-all sounddevice --collect-all sherpa_onnx --collect-binaries onnxruntime \
             --paths laptop laptop/app.py
           cp -r models dist/FieldTranslator/models
           rm -f dist/FieldTranslator/models/models_size.txt
@@ -116,7 +139,8 @@ jobs:
         timeout-minutes: 8
         run: |
           cd dist/FieldTranslator
-          $p = Start-Process -FilePath .\FieldTranslator.exe -ArgumentList '--selftest' -PassThru -NoNewWindow `
+          $wav = (Resolve-Path ..\..\testdata\test.wav).Path
+          $p = Start-Process -FilePath .\FieldTranslator.exe -ArgumentList '--selftest',"`"$wav`"" -PassThru -NoNewWindow `
                -RedirectStandardOutput out.txt -RedirectStandardError err.txt
           if (-not $p.WaitForExit(300000)) { $p.Kill(); Write-Output "::error::self-test timed out" }
           $log = @()

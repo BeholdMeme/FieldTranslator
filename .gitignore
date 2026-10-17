@@ -11,3 +11,7 @@ local.properties
 *.iml
 __pycache__/
 dist/
+# downloaded by scripts/fetch_models.sh
+libs/
+app/src/main/jniLibs/
+app/src/main/assets/asr/

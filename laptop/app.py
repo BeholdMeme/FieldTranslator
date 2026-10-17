@@ -18,7 +18,7 @@ from translator_core import MarianTranslator
 SAMPLE_RATE = 16000
 
 DIRS = {
-    "ru-en": {"asr": "ru", "label": "RUSSIAN  →  ENGLISH", "color": "#C62828", "hint": "Speak Russian"},
+    "ru-en": {"asr": "ru-zipformer", "label": "RUSSIAN  →  ENGLISH", "color": "#C62828", "hint": "Speak Russian"},
     "en-ru": {"asr": "en", "label": "ENGLISH  →  RUSSIAN", "color": "#1565C0", "hint": "Speak English"},
 }
 
@@ -33,7 +33,7 @@ def find_models():
     here = app_dir()
     for cand in (os.path.join(here, "models"),
                  os.path.join(here, "..", "app", "src", "main", "assets")):
-        if os.path.isdir(os.path.join(cand, "mt", "ru-en")) and os.path.isdir(os.path.join(cand, "asr", "ru")):
+        if os.path.isdir(os.path.join(cand, "mt", "ru-en")) and os.path.isdir(os.path.join(cand, "asr", "en")):
             return os.path.abspath(cand)
     raise SystemExit("Models not found. Put the 'models' folder next to the app "
                      "(or run scripts/fetch_models.sh in the repo).")
@@ -73,28 +73,59 @@ def list_mics():
 
 
 class Engine:
-    """Loads one direction at a time (keeps memory low)."""
+    """Loads one direction at a time (keeps memory low).
+    Russian speech: streaming Zipformer (sherpa-onnx). English speech: Vosk small model."""
 
     def __init__(self, models):
         self.models = models
         self.pair = None
-        self.asr_model = None
+        self.asr = None
         self.translator = None
         self.lock = threading.Lock()
 
     def load(self, pair):
-        from vosk import Model, SetLogLevel
-        SetLogLevel(-1)
         with self.lock:
             if self.pair == pair:
                 return
-            self.asr_model = None
+            self.asr = None
             self.translator = None
-            self.asr_model = Model(os.path.join(self.models, "asr", DIRS[pair]["asr"]))
+            asr_dir = os.path.join(self.models, "asr", DIRS[pair]["asr"])
+            if pair == "ru-en":
+                from asr_zipformer import StreamingAsr
+                self.asr = StreamingAsr(asr_dir, threads=2)
+            else:
+                from vosk import Model, SetLogLevel
+                SetLogLevel(-1)
+                self.asr = Model(asr_dir)
             self.translator = MarianTranslator(os.path.join(self.models, "mt", pair),
                                                threads=min(4, os.cpu_count() or 2))
             self.translator.translate("ok")
             self.pair = pair
+
+    def open_session(self, rate, on_partial, on_final):
+        """Returns (accept(bytes), finish()) for the loaded speech model."""
+        import numpy as np
+        asr = self.asr
+        if self.pair == "ru-en":
+            s = asr.session()
+            return (lambda data: s.accept(np.frombuffer(data, dtype=np.int16), rate, on_partial, on_final),
+                    lambda: s.finish(rate, on_partial, on_final))
+        from vosk import KaldiRecognizer
+        rec = KaldiRecognizer(asr, rate)
+
+        def accept(data):
+            if rec.AcceptWaveform(data):
+                t = json.loads(rec.Result()).get("text", "").strip()
+                if t:
+                    on_final(t)
+            else:
+                on_partial(json.loads(rec.PartialResult()).get("partial", "").strip())
+
+        def finish():
+            t = json.loads(rec.FinalResult()).get("text", "").strip()
+            if t:
+                on_final(t)
+        return accept, finish
 
     def translate(self, pair, text):
         with self.lock:
@@ -103,10 +134,11 @@ class Engine:
             return self.translator.translate(text)
 
 
-def selftest():
+def selftest(wav=None):
     out = []
     ok = True
     try:
+        import numpy as np
         models = find_models()
         eng = Engine(models)
         for pair, phrase in (("ru-en", "где находится вокзал"), ("en-ru", "where is the train station")):
@@ -114,12 +146,29 @@ def selftest():
             eng.load(pair)
             res = eng.translate(pair, phrase)
             out.append("%s: %s -> %s (%.1fs incl. load)" % (pair, phrase, res, time.time() - t0))
-            from vosk import KaldiRecognizer
-            rec = KaldiRecognizer(eng.asr_model, SAMPLE_RATE)
-            rec.AcceptWaveform(b"\x00\x00" * SAMPLE_RATE)
-            out.append("  asr ok: " + json.loads(rec.FinalResult()).get("text", "") + "<silence>")
             if not res:
                 ok = False
+            heard = []
+            accept, finish = eng.open_session(SAMPLE_RATE, lambda t: None, heard.append)
+            if pair == "ru-en" and wav:
+                import wave
+                with wave.open(wav) as w:
+                    pcm = w.readframes(w.getnframes())
+                    rate = w.getframerate()
+                accept, finish = eng.open_session(rate, lambda t: None, heard.append)
+                step = rate // 10 * 2
+                for i in range(0, len(pcm), step):
+                    accept(pcm[i:i + step])
+                finish()
+                text = " ".join(heard)
+                out.append("  Russian speech test: " + text)
+                if sum(1 for ch in text.lower() if "а" <= ch <= "я") < 5:
+                    ok = False
+                    out.append("  Russian speech test FAILED (no Russian text)")
+            else:
+                accept(np.zeros(SAMPLE_RATE, dtype=np.int16).tobytes())
+                finish()
+                out.append("  speech engine ok (silence -> %r)" % " ".join(heard))
         import sounddevice  # noqa: F401  (checks the audio library is bundled)
         out.append("audio library ok")
     except Exception:
@@ -299,7 +348,6 @@ def run_gui():
         if not state["ready"] or state["listening"]:
             return
         import sounddevice as sd
-        from vosk import KaldiRecognizer
         dev = mic_choice()
         try:
             info = sd.query_devices(dev, "input")
@@ -308,7 +356,11 @@ def run_gui():
             status_var.set("Microphone error: %s" % e)
             return
         # Vosk resamples internally, so record at the mic's own rate (most compatible)
-        rec = KaldiRecognizer(engine.asr_model, rate)
+        pair = state["pair"]
+        accept, finish = engine.open_session(
+            rate,
+            lambda t: events.put(("partial", (pair, t))),
+            lambda t: events.put(("final", (pair, t))))
         audio = queue.Queue()
         stop = threading.Event()
         pair = state["pair"]
@@ -341,11 +393,8 @@ def run_gui():
                         data = audio.get(timeout=0.2)
                     except queue.Empty:
                         continue
-                    if rec.AcceptWaveform(data):
-                        events.put(("final", (pair, json.loads(rec.Result()).get("text", ""))))
-                    else:
-                        events.put(("partial", (pair, json.loads(rec.PartialResult()).get("partial", ""))))
-                events.put(("final", (pair, json.loads(rec.FinalResult()).get("text", ""))))
+                    accept(data)
+                finish()
             except Exception as e:
                 events.put(("status", "Speech recognizer error: %s" % e))
 
@@ -450,7 +499,8 @@ def run_gui():
 
 if __name__ == "__main__":
     if "--selftest" in sys.argv:
-        selftest()
+        i = sys.argv.index("--selftest")
+        selftest(sys.argv[i + 1] if len(sys.argv) > i + 1 else None)
     else:
         try:
             run_gui()

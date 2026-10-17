@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Downloads the offline models and puts them where the apps expect them:
-#   app/src/main/assets/asr/{ru,en}       Vosk small speech models   (~45 + 40 MB)
+#   app/src/main/assets/asr/en            Vosk small English speech model (~40 MB)
+#   app/src/main/assets/asr/ru-zipformer  Zipformer streaming Russian speech model (~28 MB)
 #   app/src/main/assets/mt/{ru-en,en-ru}  Opus-MT int8 ONNX models  (~110 MB each)
 # Needs internet once (run on a PC or in CI). Re-running skips finished downloads.
 set -euo pipefail
@@ -18,16 +19,37 @@ dl() {  # url dest
   mv "$2.part" "$2"
 }
 
-# --- speech recognition (Vosk) ---
-declare -A VOSK=( [ru]=vosk-model-small-ru-0.22 [en]=vosk-model-small-en-us-0.15 )
-for lang in ru en; do
-  name="${VOSK[$lang]}"
-  dl "https://alphacephei.com/vosk/models/$name.zip" "$CACHE/$name.zip"
-  rm -rf "$ASSETS/asr/$lang" "$CACHE/unzip-$lang"
-  mkdir -p "$ASSETS/asr" "$CACHE/unzip-$lang"
-  unzip -q "$CACHE/$name.zip" -d "$CACHE/unzip-$lang"
-  mv "$CACHE/unzip-$lang/$name" "$ASSETS/asr/$lang"
-  rm -rf "$CACHE/unzip-$lang"
+# --- English speech recognition (Vosk small model) ---
+dl "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip" "$CACHE/vosk-model-small-en-us-0.15.zip"
+rm -rf "$ASSETS/asr/en" "$ASSETS/asr/ru" "$CACHE/unzip-en"
+mkdir -p "$ASSETS/asr" "$CACHE/unzip-en"
+unzip -q "$CACHE/vosk-model-small-en-us-0.15.zip" -d "$CACHE/unzip-en"
+mv "$CACHE/unzip-en/vosk-model-small-en-us-0.15" "$ASSETS/asr/en"
+rm -rf "$CACHE/unzip-en"
+
+# --- Russian speech recognition (alphacep small streaming Zipformer, int8, ~28 MB) ---
+RU="https://huggingface.co/alphacep/vosk-model-small-streaming-ru/resolve/main"
+mkdir -p "$CACHE/ru-zipformer" "$ASSETS/asr/ru-zipformer"
+for f in am-onnx/encoder.int8.onnx am-onnx/decoder.int8.onnx am-onnx/joiner.int8.onnx lang/tokens.txt test.wav; do
+  dl "$RU/$f" "$CACHE/ru-zipformer/$(basename "$f")"
+done
+for f in encoder.int8.onnx decoder.int8.onnx joiner.int8.onnx tokens.txt; do
+  cp "$CACHE/ru-zipformer/$f" "$ASSETS/asr/ru-zipformer/$f"
+done
+
+# --- sherpa-onnx runtime (Java API + Android native libs + Linux lib for tests) ---
+SO_VER=1.13.8
+SO="https://github.com/k2-fsa/sherpa-onnx/releases/download/v$SO_VER"
+mkdir -p "$ROOT/libs/test"
+dl "$SO/sherpa-onnx-jvm-$SO_VER.jar" "$ROOT/libs/sherpa-onnx-jvm.jar"
+dl "$SO/sherpa-onnx-native-lib-linux-x64-$SO_VER.jar" "$ROOT/libs/test/sherpa-onnx-native-lib-linux-x64.jar"
+dl "$SO/sherpa-onnx-v$SO_VER-android-static-link-onnxruntime.tar.bz2" "$CACHE/sherpa-android.tar.bz2"
+rm -rf "$CACHE/sherpa-android" "$ROOT/app/src/main/jniLibs"
+mkdir -p "$CACHE/sherpa-android"
+tar xjf "$CACHE/sherpa-android.tar.bz2" -C "$CACHE/sherpa-android"
+for abi in armeabi-v7a arm64-v8a x86_64; do   # (32-bit x86 phones don't exist in practice)
+  mkdir -p "$ROOT/app/src/main/jniLibs/$abi"
+  cp "$(find "$CACHE/sherpa-android" -path "*/$abi/libsherpa-onnx-jni.so" | head -1)" "$ROOT/app/src/main/jniLibs/$abi/"
 done
 
 # --- translation (Opus-MT, int8 ONNX export by Xenova) ---
