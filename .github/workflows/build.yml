@@ -11,6 +11,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   android:
     runs-on: ubuntu-latest
@@ -81,7 +85,7 @@ jobs:
   windows:
     needs: android
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -98,7 +102,9 @@ jobs:
         shell: bash
         run: |
           pip install -r laptop/requirements.txt pyinstaller==6.11.1
-          pyinstaller --noconfirm --windowed --name FieldTranslator \
+          # console build with the console hidden at start: no black window for the user,
+          # but stdout/stderr still work for the CI self-test
+          pyinstaller --noconfirm --console --hide-console hide-early --name FieldTranslator \
             --collect-all vosk --collect-all sounddevice --collect-binaries onnxruntime \
             --paths laptop laptop/app.py
           cp -r models dist/FieldTranslator/models
@@ -107,12 +113,22 @@ jobs:
 
       - name: Self-test the built app
         shell: pwsh
+        timeout-minutes: 8
         run: |
           cd dist/FieldTranslator
-          Start-Process -FilePath .\FieldTranslator.exe -ArgumentList '--selftest' -Wait -NoNewWindow
-          Get-Content selftest.txt
-          if (-not (Select-String -Path selftest.txt -Pattern 'SELFTEST PASSED' -Quiet)) { exit 1 }
-          Remove-Item selftest.txt
+          $p = Start-Process -FilePath .\FieldTranslator.exe -ArgumentList '--selftest' -PassThru -NoNewWindow `
+               -RedirectStandardOutput out.txt -RedirectStandardError err.txt
+          if (-not $p.WaitForExit(300000)) { $p.Kill(); Write-Output "::error::self-test timed out" }
+          $log = @()
+          foreach ($f in 'selftest.txt','out.txt','err.txt') { if (Test-Path $f) { $log += Get-Content $f } }
+          $log | ForEach-Object { Write-Output $_ }
+          $passed = (Test-Path selftest.txt) -and (Select-String -Path selftest.txt -Pattern 'SELFTEST PASSED' -Quiet)
+          Remove-Item selftest.txt,out.txt,err.txt -ErrorAction SilentlyContinue
+          if (-not $passed) {
+            $tail = ($log | Select-Object -Last 25) -join ' | '
+            Write-Output "::error title=Windows self-test failed::$tail"
+            exit 1
+          }
 
       - name: Zip
         shell: pwsh
@@ -125,6 +141,8 @@ jobs:
 
   release:
     needs: [android, windows]
+    # publish the APK even if the laptop build fails
+    if: always() && needs.android.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -136,8 +154,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest -y --cleanup-tag || true
-          gh release create latest \
-            out/FieldTranslator-apk/FieldTranslator.apk \
-            out/FieldTranslator-windows/FieldTranslator-Windows.zip \
+          files="out/FieldTranslator-apk/FieldTranslator.apk"
+          [ -f out/FieldTranslator-windows/FieldTranslator-Windows.zip ] && files="$files out/FieldTranslator-windows/FieldTranslator-Windows.zip"
+          gh release create latest $files \
             --title "Latest build ($(date -u +%Y-%m-%d))" \
             --notes "Android: download FieldTranslator.apk on the phone and open it (allow 'install unknown apps'). Laptop: unzip FieldTranslator-Windows.zip and run FieldTranslator.exe. Both work fully offline."
