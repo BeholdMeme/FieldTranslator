@@ -14,12 +14,13 @@ import time
 import traceback
 
 from translator_core import MarianTranslator
+from pronounce import StressDict, pronounce
 
 SAMPLE_RATE = 16000
 
 DIRS = {
-    "ru-en": {"asr": "ru-zipformer", "label": "RUSSIAN  →  ENGLISH", "color": "#C62828", "hint": "Speak Russian"},
-    "en-ru": {"asr": "en", "label": "ENGLISH  →  RUSSIAN", "color": "#1565C0", "hint": "Speak English"},
+    "ru-en": {"asr": "ru-zipformer", "label": "RUSSIAN  →  ENGLISH", "color": "#E5484D", "hint": "Speak Russian"},
+    "en-ru": {"asr": "en", "label": "ENGLISH  →  RUSSIAN", "color": "#3E8CFF", "hint": "Speak English"},
 }
 
 
@@ -171,6 +172,15 @@ def selftest(wav=None):
                 out.append("  speech engine ok (silence -> %r)" % " ".join(heard))
         import sounddevice  # noqa: F401  (checks the audio library is bundled)
         out.append("audio library ok")
+        sd = StressDict(os.path.join(models, "learn", "stress.tsv"))
+        p = pronounce("Привет, как дела?", sd)
+        out.append("pronunciation: " + p)
+        if p != "pri-VYET, kak di-LA?":
+            ok = False
+        with open(os.path.join(models, "learn", "learn.json"), encoding="utf-8") as fh:
+            learn = json.load(fh)
+        out.append("learning data: %d letters, %d lessons" % (len(learn["alphabet"]), len(learn["lessons"])))
+        import learn_ui  # noqa: F401  (checks the Learn window is bundled)
     except Exception:
         ok = False
         out.append(traceback.format_exc())
@@ -187,6 +197,14 @@ def run_gui():
 
     models = find_models()
     engine = Engine(models)
+    stress_path = os.path.join(models, "learn", "stress.tsv")
+    stress = StressDict(stress_path) if os.path.isfile(stress_path) else StressDict()
+    settings_path = os.path.join(os.path.expanduser("~"), ".fieldtranslator.json")
+    try:
+        with open(settings_path, encoding="utf-8") as fh:
+            settings = json.load(fh)
+    except Exception:
+        settings = {}
     events = queue.Queue()     # (kind, payload) -> UI thread
     jobs = queue.Queue()       # translation/load jobs -> worker thread
     pending = [0]
@@ -211,59 +229,96 @@ def run_gui():
         jobs.put(fn)
 
     # ---------- UI ----------
+    BG, SURF, SURF2, BORDER, TEXT, MUTED = "#0E1116", "#171B22", "#20252E", "#2A303A", "#E8EBF0", "#8B93A1"
+    GREEN, STOP, GOLD, CYAN = "#2FB36D", "#E5484D", "#F5C451", "#7FD1E8"
+    F = "Segoe UI"
+
     root = tk.Tk()
-    root.title("RU ⇄ EN Translator (offline)")
-    root.geometry("720x820")
-    root.configure(bg="#101214")
+    root.title("Field Translator")
+    root.geometry("760x860")
+    root.minsize(560, 640)
+    root.configure(bg=BG)
 
-    dir_btn = tk.Button(root, font=("Segoe UI", 20, "bold"), fg="white", bd=0, activeforeground="white",
-                        command=lambda: toggle())
-    dir_btn.pack(fill="x", padx=12, pady=(12, 0), ipady=14)
-    tk.Label(root, text="click to switch language  (Tab key also switches, Space starts/stops)",
-             bg="#101214", fg="#8A9099").pack(pady=(4, 6))
+    def chip(parent, text, cmd, width=None):
+        b = tk.Button(parent, text=text, command=cmd, bg=SURF2, fg=TEXT, bd=0, relief="flat",
+                      font=(F, 11), activebackground=BORDER, activeforeground=TEXT, cursor="hand2",
+                      highlightthickness=1, highlightbackground=BORDER, padx=12, pady=6)
+        if width:
+            b.configure(width=width)
+        return b
 
-    body = tk.Frame(root, bg="#101214")
-    body.pack(fill="both", expand=True, padx=12)
-    txt = tk.Text(body, bg="#16191D", fg="white", wrap="word", bd=0, padx=12, pady=10,
-                  insertbackground="white")
-    sb = tk.Scrollbar(body, command=txt.yview)
+    # header
+    header = tk.Frame(root, bg=BG)
+    header.pack(fill="x", padx=20, pady=(16, 0))
+    tk.Label(header, text="Field Translator", bg=BG, fg=TEXT, font=(F, 20, "bold")).pack(side="left")
+    tk.Label(header, text="●  Offline", bg="#13261D", fg=GREEN, font=(F, 10), padx=10, pady=3).pack(side="right")
+
+    # direction: segmented control
+    seg = tk.Frame(root, bg=SURF, padx=4, pady=4)
+    seg.pack(fill="x", padx=20, pady=(14, 10))
+    seg_ru = tk.Button(seg, text="Русский  →  English", command=lambda: state["pair"] != "ru-en" and toggle(),
+                       bd=0, font=(F, 13, "bold"), cursor="hand2", activeforeground="white")
+    seg_en = tk.Button(seg, text="English  →  Русский", command=lambda: state["pair"] != "en-ru" and toggle(),
+                       bd=0, font=(F, 13, "bold"), cursor="hand2", activeforeground="white")
+    seg_ru.pack(side="left", fill="x", expand=True, ipady=10)
+    seg_en.pack(side="left", fill="x", expand=True, ipady=10)
+
+    # conversation
+    body = tk.Frame(root, bg=SURF)
+    body.pack(fill="both", expand=True, padx=20)
+    txt = tk.Text(body, bg=SURF, fg=TEXT, wrap="word", bd=0, padx=18, pady=12, highlightthickness=0,
+                  insertbackground=TEXT, selectbackground=BORDER, cursor="arrow")
+    sb = tk.Scrollbar(body, command=txt.yview, width=10, bd=0, troughcolor=SURF)
     txt.configure(yscrollcommand=sb.set, state="disabled")
     sb.pack(side="right", fill="y")
     txt.pack(side="left", fill="both", expand=True)
+    txt.configure(state="normal")
+    txt.insert("end", "Pick a direction, press Listen (or Space), and start talking.\n"
+                      "Translations appear here.  Tab switches language.\n", ("hint",))
+    txt.configure(state="disabled")
 
     partial_var = tk.StringVar()
     preview_var = tk.StringVar()
     status_var = tk.StringVar(value="Starting…")
-    partial_lbl = tk.Label(root, textvariable=partial_var, bg="#101214", fg="#B0B6BE",
-                           wraplength=680, justify="left", anchor="w")
-    partial_lbl.pack(fill="x", padx=14, pady=(8, 0))
-    preview_lbl = tk.Label(root, textvariable=preview_var, bg="#101214", fg="#80DEEA",
-                           wraplength=680, justify="left", anchor="w")
-    preview_lbl.pack(fill="x", padx=14)
-    tk.Label(root, textvariable=status_var, bg="#101214", fg="#8A9099").pack(pady=6)
+    partial_lbl = tk.Label(root, textvariable=partial_var, bg=BG, fg="#B7BEC9",
+                           wraplength=700, justify="left", anchor="w")
+    partial_lbl.pack(fill="x", padx=22, pady=(8, 0))
+    preview_lbl = tk.Label(root, textvariable=preview_var, bg=BG, fg=CYAN,
+                           wraplength=700, justify="left", anchor="w")
+    preview_lbl.pack(fill="x", padx=22)
 
-    tools = tk.Frame(root, bg="#101214")
-    tools.pack(fill="x", padx=12)
-    for label, cmd in (("A−", lambda: set_scale(state["scale"] / 1.15)),
-                       ("A+", lambda: set_scale(state["scale"] * 1.15)),
-                       ("Clear", lambda: clear())):
-        tk.Button(tools, text=label, command=cmd, bg="#2A2F36", fg="white", bd=0,
-                  font=("Segoe UI", 12), activebackground="#3A3F46").pack(side="left", expand=True,
-                                                                          fill="x", padx=4, ipady=6)
-    mic_row = tk.Frame(root, bg="#101214")
-    mic_row.pack(fill="x", padx=12, pady=(8, 0))
-    tk.Label(mic_row, text="Mic:", bg="#101214", fg="#8A9099").pack(side="left")
+    # control panel
+    panel = tk.Frame(root, bg=SURF, padx=14, pady=12)
+    panel.pack(fill="x", padx=20, pady=(8, 18))
+    tk.Label(panel, textvariable=status_var, bg=SURF, fg=MUTED, font=(F, 10), wraplength=680).pack(pady=(0, 8))
+
+    mic_row = tk.Frame(panel, bg=SURF)
+    mic_row.pack(fill="x")
+    tk.Label(mic_row, text="Mic", bg=SURF, fg=MUTED, font=(F, 10)).pack(side="left")
     mic_names, mic_ids = list_mics()
     mic_var = tk.StringVar(value=mic_names[0] if mic_names else "(no microphone found)")
     mic_menu = tk.OptionMenu(mic_row, mic_var, *(mic_names or ["(no microphone found)"]),
                              command=lambda _v: restart_if_listening())
-    mic_menu.configure(bg="#2A2F36", fg="white", activebackground="#3A3F46", activeforeground="white",
-                       highlightthickness=0, bd=0, anchor="w")
-    mic_menu["menu"].configure(bg="#2A2F36", fg="white")
-    mic_menu.pack(side="left", fill="x", expand=True, padx=(6, 8))
-    meter = tk.Canvas(mic_row, width=140, height=14, bg="#2A2F36", highlightthickness=0)
+    mic_menu.configure(bg=SURF2, fg=TEXT, activebackground=BORDER, activeforeground=TEXT,
+                       highlightthickness=0, bd=0, anchor="w", font=(F, 10), relief="flat")
+    mic_menu["menu"].configure(bg=SURF2, fg=TEXT, font=(F, 10))
+    mic_menu.pack(side="left", fill="x", expand=True, padx=(8, 10))
+    meter = tk.Canvas(mic_row, width=150, height=6, bg=SURF2, highlightthickness=0)
     meter.pack(side="right")
-    meter_bar = meter.create_rectangle(0, 0, 0, 14, fill="#43A047", width=0)
+    meter_bar = meter.create_rectangle(0, 0, 0, 6, fill=GREEN, width=0)
+
+    chips = tk.Frame(panel, bg=SURF)
+    chips.pack(fill="x", pady=(10, 0))
+    pron_btn = chip(chips, "Pronounce", lambda: toggle_pron())
+    pron_btn.pack(side="left", padx=(0, 6))
+
+    def open_learn():
+        from learn_ui import LearnWindow
+        LearnWindow(root, models, settings, save_settings)
+    chip(chips, "Learn to read", open_learn).pack(side="left", padx=6)
+    chip(chips, "Clear", lambda: clear()).pack(side="right", padx=(6, 0))
+    chip(chips, "A+", lambda: set_scale(state["scale"] * 1.15), 3).pack(side="right", padx=6)
+    chip(chips, "A−", lambda: set_scale(state["scale"] / 1.15), 3).pack(side="right", padx=6)
 
     def mic_choice():
         name = mic_var.get()
@@ -274,14 +329,17 @@ def run_gui():
             stop_listening()
             start_listening()
 
-    listen_btn = tk.Button(root, font=("Segoe UI", 22, "bold"), fg="white", bd=0, activeforeground="white",
-                           command=lambda: toggle_listen())
-    listen_btn.pack(fill="x", padx=12, pady=12, ipady=18)
+    listen_btn = tk.Button(panel, font=(F, 18, "bold"), fg="white", bd=0, activeforeground="white",
+                           command=lambda: toggle_listen(), cursor="hand2")
+    listen_btn.pack(fill="x", pady=(12, 0), ipady=14)
 
     def apply_fonts():
         s = state["scale"]
-        txt.tag_configure("src", foreground="#B0B6BE", font=("Segoe UI", int(12 * s)))
-        txt.tag_configure("dst", foreground="white", font=("Segoe UI", int(18 * s), "bold"), spacing3=14)
+        txt.tag_configure("hint", foreground=MUTED, font=(F, int(12 * s)), justify="center", spacing1=40)
+        txt.tag_configure("src", foreground=MUTED, font=(F, int(11 * s)), spacing1=18)
+        txt.tag_configure("dst", foreground=TEXT, font=(F, int(17 * s), "bold"), spacing1=3)
+        txt.tag_configure("pron", foreground=GOLD, font=(F, int(13 * s)), spacing1=3,
+                          elide=not settings.get("pron", False))
         partial_lbl.configure(font=("Segoe UI", int(13 * s), "italic"))
         preview_lbl.configure(font=("Segoe UI", int(15 * s)))
 
@@ -295,28 +353,66 @@ def run_gui():
         txt.configure(state="disabled")
 
     def refresh():
-        d = DIRS[state["pair"]]
-        dir_btn.configure(text=d["label"], bg=d["color"], activebackground=d["color"])
+        ru = state["pair"] == "ru-en"
+        for b, on, col in ((seg_ru, ru, DIRS["ru-en"]["color"]), (seg_en, not ru, DIRS["en-ru"]["color"])):
+            b.configure(bg=col if on else SURF, fg="white" if on else MUTED, activebackground=col if on else SURF2)
         if state["listening"]:
-            listen_btn.configure(text="■  STOP", bg="#D84315", activebackground="#D84315", state="normal")
+            listen_btn.configure(text="■   Stop", bg=STOP, activebackground=STOP, state="normal")
         elif state["ready"]:
-            listen_btn.configure(text="●  LISTEN", bg="#2E7D32", activebackground="#2E7D32", state="normal")
+            listen_btn.configure(text="●   Listen", bg=GREEN, activebackground=GREEN, state="normal")
         else:
-            listen_btn.configure(text="Loading…", bg="#3A3F45", activebackground="#3A3F45", state="disabled")
+            listen_btn.configure(text="Loading…", bg=SURF2, activebackground=SURF2, state="disabled",
+                                 disabledforeground=MUTED)
 
     entry_counter = [0]
 
     def add_entry(original):
         entry_counter[0] += 1
         mark = "dst%d" % entry_counter[0]
+        pmark = "pron%d" % entry_counter[0]
         txt.configure(state="normal")
+        hint = txt.tag_ranges("hint")
+        if hint:
+            txt.delete(hint[0], hint[-1])
         txt.insert("end", original + "\n", ("src",))
         txt.mark_set(mark, "end-1c")
         txt.mark_gravity(mark, "left")
         txt.insert("end", "…\n", ("dst",))
+        txt.mark_set(pmark, "end-1c")
+        txt.mark_gravity(pmark, "left")
+        txt.insert("end", "\n", ("pron",))
         txt.configure(state="disabled")
         txt.see("end")
-        return mark
+        return mark, pmark
+
+    def fill_pron(pmark, russian):
+        try:
+            p = pronounce(russian, stress)
+        except Exception:
+            return
+        txt.configure(state="normal")
+        txt.insert(pmark, p, ("pron",))
+        txt.configure(state="disabled")
+        txt.see("end")
+
+    def save_settings():
+        try:
+            with open(settings_path, "w", encoding="utf-8") as fh:
+                json.dump(settings, fh)
+        except Exception:
+            pass
+
+    def update_pron_btn():
+        on = settings.get("pron", False)
+        pron_btn.configure(text="Pronounce  ✓" if on else "Pronounce",
+                           bg="#3A3218" if on else SURF2, fg=GOLD if on else TEXT,
+                           highlightbackground=GOLD if on else BORDER)
+        txt.tag_configure("pron", elide=not on)
+
+    def toggle_pron():
+        settings["pron"] = not settings.get("pron", False)
+        save_settings()
+        update_pron_btn()
 
     def fill_entry(mark, result):
         txt.configure(state="normal")
@@ -461,8 +557,15 @@ def run_gui():
             preview_var.set("")
             state["last_src"] = ""
             if text.strip():
-                mark = add_entry(text)
-                translate_async(pair, text, lambda r, m=mark: fill_entry(m, r))
+                mark, pmark = add_entry(text)
+                if pair == "ru-en":
+                    fill_pron(pmark, text)
+
+                def done(r, m=mark, pm=pmark, p=pair):
+                    fill_entry(m, r)
+                    if p == "en-ru" and r:
+                        fill_pron(pm, r)
+                translate_async(pair, text, done)
 
     def drain_events():
         while True:
@@ -475,11 +578,11 @@ def run_gui():
     def pump():
         drain_events()
         lvl = state.get("level", 0.0) if state["listening"] else 0.0
-        meter.coords(meter_bar, 0, 0, int(140 * min(1.0, lvl * 4)), 14)
+        meter.coords(meter_bar, 0, 0, int(150 * min(1.0, lvl * 4)), 6)
         if (state["listening"] and time.time() - state.get("listen_started", 0) > 2.5
                 and state.get("peak_since_start", 1) < 30 and not state.get("silence_warned")):
             state["silence_warned"] = True
-            status_var.set("The microphone is sending silence. Pick another Mic above, or check Windows "
+            status_var.set("The microphone is sending silence. Pick another Mic, or check Windows "
                            "Settings > Privacy > Microphone > 'Let desktop apps access your microphone'.")
         root.after(50, pump)
 
@@ -488,6 +591,7 @@ def run_gui():
     root.protocol("WM_DELETE_WINDOW", lambda: (stop_listening(), root.destroy()))
 
     apply_fonts()
+    update_pron_btn()
     refresh()
     load(state["pair"])
     pump()

@@ -51,6 +51,9 @@ jobs:
           python scripts/make_reference.py app/src/main/assets/mt/ru-en ru-en build/ref/ru-en.tsv --hf .model-cache/opus-mt-ru-en
           python scripts/make_reference.py app/src/main/assets/mt/en-ru en-ru build/ref/en-ru.tsv --hf .model-cache/opus-mt-en-ru
 
+      - name: Check pronunciation guide (Python)
+        run: python scripts/check_pronounce.py app/src/main/assets/learn/stress.tsv build/ref/pron.tsv
+
       - name: Check Russian speech recognition (Python)
         run: python scripts/check_asr.py app/src/main/assets/asr/ru-zipformer .model-cache/ru-zipformer/test.wav build/ref/asr-ru.txt
 
@@ -60,8 +63,9 @@ jobs:
           ./gradlew :core:test --no-daemon \
             "-PmtCases=$PWD/app/src/main/assets/mt/ru-en::$PWD/build/ref/ru-en.tsv;$PWD/app/src/main/assets/mt/en-ru::$PWD/build/ref/en-ru.tsv" \
             "-PasrCase=$PWD/app/src/main/assets/asr/ru-zipformer::$PWD/.model-cache/ru-zipformer/test.wav::$PWD/build/ref/asr-ru.txt" \
+            "-PpronCase=$PWD/app/src/main/assets/learn/stress.tsv::$PWD/build/ref/pron.tsv" \
             2>&1 | tee test.log || { grep -E "error:|FAILED|expected|Exception|What went wrong" -A2 test.log | head -40 | sed 's/^/::error::/'; exit 1; }
-          grep -E "Russian ASR|cases identical" test.log | sed 's/^/::notice::/' || true
+          grep -E "Russian ASR|cases identical|Pronunciation:" test.log | sed 's/^/::notice::/' || true
 
       - name: Build APK
         run: |
@@ -80,6 +84,7 @@ jobs:
             done
           done
           unzip -l "$APK" | grep -q "assets/asr/ru-zipformer/encoder.int8.onnx" || { echo "::error::Russian speech model missing"; exit 1; }
+          unzip -l "$APK" | grep -q "assets/learn/learn.json" || { echo "::error::learning data missing"; exit 1; }
           unzip -l "$APK" | grep -q "assets/mt/en-ru/decoder.onnx" || { echo "models missing"; exit 1; }
           cp "$APK" FieldTranslator.apk
 

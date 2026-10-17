@@ -33,6 +33,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import app.translator.core.MarianTranslator;
+import app.translator.core.Pronouncer;
 
 /**
  * One screen:  [ direction toggle ]  [ transcript + translations ]  [ LISTEN ]
@@ -44,8 +45,8 @@ import app.translator.core.MarianTranslator;
 public class MainActivity extends Activity {
 
     enum Dir {
-        RU_EN("ru-zipformer", "mt/ru-en", "RUSSIAN  →  ENGLISH", "speak Russian", 0xFFC62828),
-        EN_RU("en", "mt/en-ru", "ENGLISH  →  RUSSIAN", "speak English", 0xFF1565C0);
+        RU_EN("ru-zipformer", "mt/ru-en", "RUSSIAN  →  ENGLISH", "speak Russian", 0xFFE5484D),
+        EN_RU("en", "mt/en-ru", "ENGLISH  →  RUSSIAN", "speak English", 0xFF3E8CFF);
 
         final String asr, mt, label, hint;
         final int color;
@@ -78,9 +79,14 @@ public class MainActivity extends Activity {
     private long lastPreviewAt;
     private String lastPreviewSrc = "";
     private float textScale = 1f;
+    private boolean pronMode;
+    private volatile Pronouncer pronouncer;
+    /** pronunciation line of each entry + the Russian text it is for */
+    private final java.util.List<Object[]> pronLines = new java.util.ArrayList<>();
+    private Button pronButton;
 
     // views
-    private Button dirButton, listenButton;
+    private Button listenButton;
     private TextView status, partialView, previewView;
     private View levelBar;
     private LinearLayout log;
@@ -98,6 +104,7 @@ public class MainActivity extends Activity {
             dir = Dir.RU_EN;
         }
         textScale = prefs.getFloat("scale", 1f);
+        pronMode = prefs.getBoolean("pron", false);
         buildUi();
         refreshUi();
         installAndLoad();
@@ -142,6 +149,13 @@ public class MainActivity extends Activity {
                     ui.post(() -> setStatus(msg));
                 });
                 ui.post(() -> installed = true);
+                try {
+                    pronouncer = new Pronouncer(new Pronouncer.StressDict(
+                            new File(ModelInstaller.root(this), "learn/stress.tsv")));
+                    ui.post(this::fillPronunciations);
+                } catch (Throwable t) {
+                    android.util.Log.w("FieldTranslator", "pronunciation unavailable", t);
+                }
             } catch (Throwable t) {
                 ui.post(() -> setStatus("Setup failed: " + t.getMessage()));
                 return;
@@ -309,19 +323,39 @@ public class MainActivity extends Activity {
         lastPreviewSrc = "";
         if (text.trim().isEmpty()) return;
         final TextView[] entry = addEntry(d, text);
-        translateAsync(d, text, res -> entry[1].setText(res.isEmpty() ? "—" : res));
+        if (d == Dir.RU_EN) setPron(entry[2], text);
+        translateAsync(d, text, res -> {
+            entry[1].setText(res.isEmpty() ? "—" : res);
+            if (d == Dir.EN_RU && !res.isEmpty()) setPron(entry[2], res);
+        });
     }
 
     // ------------------------------------------------------------------ UI
+    // Plain views + GradientDrawables only (no images, no extra libraries) -> tiny memory use.
+
+    static final int BG = 0xFF0E1116, SURFACE = 0xFF171B22, SURFACE2 = 0xFF20252E, BORDER = 0xFF2A303A,
+            TEXT = 0xFFE8EBF0, MUTED = 0xFF8B93A1, GREEN = 0xFF2FB36D, RED_STOP = 0xFFE5484D,
+            GOLD = 0xFFF5C451, CYAN = 0xFF7FD1E8;
+
+    private Button segRu, segEn;
+    private TextView emptyHint;
 
     private int dp(float v) {
         return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, getResources().getDisplayMetrics());
     }
 
-    private GradientDrawable rounded(int color) {
+    private GradientDrawable rounded(int color) { return rounded(color, 14); }
+
+    private GradientDrawable rounded(int color, float radiusDp) {
         GradientDrawable g = new GradientDrawable();
         g.setColor(color);
-        g.setCornerRadius(dp(14));
+        g.setCornerRadius(dp(radiusDp));
+        return g;
+    }
+
+    private GradientDrawable outlined(int fill, int stroke, float radiusDp) {
+        GradientDrawable g = rounded(fill, radiusDp);
+        g.setStroke(dp(1), stroke);
         return g;
     }
 
@@ -330,100 +364,163 @@ public class MainActivity extends Activity {
         b.setText(text);
         b.setAllCaps(false);
         b.setTextColor(Color.WHITE);
-        b.setTypeface(Typeface.DEFAULT_BOLD);
-        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
-        if (Build.VERSION.SDK_INT >= 21) b.setStateListAnimator(null);
+        b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
+        b.setStateListAnimator(null);
         return b;
+    }
+
+    private TextView label(String text, float sp, int color) {
+        TextView t = new TextView(this);
+        t.setText(text);
+        t.setTextColor(color);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
+        return t;
     }
 
     private void buildUi() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(0xFF101214);
-        root.setPadding(dp(12), dp(12), dp(12), dp(12));
+        root.setBackgroundColor(BG);
+        root.setPadding(dp(16), dp(14), dp(16), dp(14));
 
-        dirButton = bigButton("");
-        dirButton.setOnClickListener(v -> toggleDirection());
-        root.addView(dirButton, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(76)));
+        // --- header: title + offline chip
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = label("Field Translator", 22, TEXT);
+        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        header.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView chip = label("●  Offline", 12, GREEN);
+        chip.setBackground(outlined(0x1A2FB36D, 0x552FB36D, 12));
+        chip.setPadding(dp(10), dp(4), dp(10), dp(4));
+        header.addView(chip);
+        root.addView(header);
 
-        TextView tip = new TextView(this);
-        tip.setText("tap to switch language");
-        tip.setTextColor(0xFF8A9099);
-        tip.setGravity(Gravity.CENTER);
-        tip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        tip.setPadding(0, dp(4), 0, dp(6));
-        root.addView(tip);
+        // --- direction: segmented control
+        LinearLayout seg = new LinearLayout(this);
+        seg.setOrientation(LinearLayout.HORIZONTAL);
+        seg.setBackground(rounded(SURFACE, 16));
+        seg.setPadding(dp(4), dp(4), dp(4), dp(4));
+        segRu = bigButton("Русский  →  English");
+        segEn = bigButton("English  →  Русский");
+        segRu.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        segEn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        segRu.setOnClickListener(v -> { if (dir != Dir.RU_EN) toggleDirection(); });
+        segEn.setOnClickListener(v -> { if (dir != Dir.EN_RU) toggleDirection(); });
+        seg.addView(segRu, new LinearLayout.LayoutParams(0, dp(52), 1f));
+        seg.addView(segEn, new LinearLayout.LayoutParams(0, dp(52), 1f));
+        LinearLayout.LayoutParams segLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        segLp.setMargins(0, dp(12), 0, dp(10));
+        root.addView(seg, segLp);
 
+        // --- conversation
+        android.widget.FrameLayout convo = new android.widget.FrameLayout(this);
         scroll = new ScrollView(this);
+        scroll.setVerticalScrollBarEnabled(false);
         log = new LinearLayout(this);
         log.setOrientation(LinearLayout.VERTICAL);
         scroll.addView(log);
-        root.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        convo.addView(scroll);
+        emptyHint = label("Pick a direction, tap Listen,\nand start talking.\n\nTranslations appear here.", 16, MUTED);
+        emptyHint.setGravity(Gravity.CENTER);
+        convo.addView(emptyHint, new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        root.addView(convo, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
-        partialView = new TextView(this);
-        partialView.setTextColor(0xFFB0B6BE);
+        // --- live box (what is being heard right now)
+        LinearLayout live = new LinearLayout(this);
+        live.setOrientation(LinearLayout.VERTICAL);
+        partialView = label("", 18, 0xFFB7BEC9);
         partialView.setTypeface(Typeface.DEFAULT, Typeface.ITALIC);
         partialView.setVisibility(View.GONE);
         partialView.setPadding(dp(4), dp(8), dp(4), 0);
-        root.addView(partialView);
-
-        previewView = new TextView(this);
-        previewView.setTextColor(0xFF80DEEA);
+        live.addView(partialView);
+        previewView = label("", 20, CYAN);
         previewView.setVisibility(View.GONE);
         previewView.setPadding(dp(4), dp(2), dp(4), dp(4));
-        root.addView(previewView);
+        live.addView(previewView);
+        root.addView(live);
 
-        status = new TextView(this);
-        status.setTextColor(0xFF8A9099);
-        status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        // --- control panel
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setBackground(rounded(SURFACE, 20));
+        panel.setPadding(dp(12), dp(10), dp(12), dp(12));
+        LinearLayout.LayoutParams panelLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        panelLp.setMargins(0, dp(8), 0, 0);
+
+        status = label("", 13, MUTED);
         status.setGravity(Gravity.CENTER);
-        status.setPadding(0, dp(6), 0, dp(6));
-        root.addView(status);
+        status.setPadding(0, 0, 0, dp(8));
+        panel.addView(status);
 
         levelBar = new View(this);
         android.widget.FrameLayout levelBox = new android.widget.FrameLayout(this);
-        levelBox.setBackgroundColor(0xFF2A2F36);
-        levelBar.setBackgroundColor(0xFF43A047);
+        levelBox.setBackground(rounded(SURFACE2, 3));
+        levelBar.setBackground(rounded(GREEN, 3));
         levelBox.addView(levelBar, new android.widget.FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(6));
-        llp.setMargins(dp(4), 0, dp(4), dp(8));
-        root.addView(levelBox, llp);
+        LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(5));
+        llp.setMargins(dp(2), 0, dp(2), dp(10));
+        panel.addView(levelBox, llp);
         setLevel(0);
 
-        LinearLayout tools = new LinearLayout(this);
-        tools.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout chips = new LinearLayout(this);
+        chips.setOrientation(LinearLayout.HORIZONTAL);
+        pronButton = smallButton("", v -> togglePron());
+        Button learn = smallButton("Learn", v -> startActivity(new android.content.Intent(this, LearnActivity.class)));
         Button smaller = smallButton("A−", v -> setScale(textScale / 1.15f));
         Button larger = smallButton("A+", v -> setScale(textScale * 1.15f));
-        Button clear = smallButton("Clear", v -> log.removeAllViews());
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(48), 1f);
-        lp.setMargins(dp(4), 0, dp(4), dp(8));
-        tools.addView(smaller, lp);
-        tools.addView(larger, new LinearLayout.LayoutParams(lp));
-        tools.addView(clear, new LinearLayout.LayoutParams(lp));
-        root.addView(tools);
+        Button clear = smallButton("Clear", v -> { log.removeAllViews(); pronLines.clear(); updateEmpty(); });
+        addChip(chips, pronButton, 1.7f);
+        addChip(chips, learn, 1.2f);
+        addChip(chips, smaller, 0.8f);
+        addChip(chips, larger, 0.8f);
+        addChip(chips, clear, 1.1f);
+        panel.addView(chips);
 
-        listenButton = bigButton("LISTEN");
-        listenButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 26);
+        listenButton = bigButton("Listen");
+        listenButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
         listenButton.setOnClickListener(v -> {
             if (listening) stopListening(); else startListening();
         });
-        root.addView(listenButton, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(96)));
+        LinearLayout.LayoutParams lbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(72));
+        lbLp.setMargins(0, dp(10), 0, 0);
+        panel.addView(listenButton, lbLp);
+        root.addView(panel, panelLp);
 
+        updatePronButton();
         setContentView(root);
         applyScale();
+        updateEmpty();
+    }
+
+    private void addChip(LinearLayout row, Button b, float weight) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(40), weight);
+        lp.setMargins(dp(3), 0, dp(3), 0);
+        row.addView(b, lp);
     }
 
     private Button smallButton(String text, View.OnClickListener l) {
         Button b = new Button(this);
         b.setText(text);
         b.setAllCaps(false);
-        b.setTextColor(Color.WHITE);
-        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        b.setBackground(rounded(0xFF2A2F36));
-        if (Build.VERSION.SDK_INT >= 21) b.setStateListAnimator(null);
+        b.setTextColor(TEXT);
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        b.setPadding(dp(4), 0, dp(4), 0);
+        b.setMinHeight(0);
+        b.setMinimumHeight(0);
+        b.setBackground(outlined(SURFACE2, BORDER, 20));
+        b.setStateListAnimator(null);
         b.setOnClickListener(l);
         return b;
+    }
+
+    private void updateEmpty() {
+        if (emptyHint != null) emptyHint.setVisibility(log.getChildCount() == 0 ? View.VISIBLE : View.GONE);
     }
 
     private void toggleDirection() {
@@ -441,43 +538,59 @@ public class MainActivity extends Activity {
     }
 
     private void refreshUi() {
-        dirButton.setText(dir.label);
-        dirButton.setBackground(rounded(dir.color));
+        boolean ru = dir == Dir.RU_EN;
+        segRu.setBackground(ru ? rounded(Dir.RU_EN.color, 12) : null);
+        segEn.setBackground(!ru ? rounded(Dir.EN_RU.color, 12) : null);
+        segRu.setTextColor(ru ? Color.WHITE : MUTED);
+        segEn.setTextColor(!ru ? Color.WHITE : MUTED);
         listenButton.setEnabled(ready);
         if (listening) {
-            listenButton.setText("■  STOP");
-            listenButton.setBackground(rounded(0xFFD84315));
+            listenButton.setText("■   Stop");
+            listenButton.setBackground(rounded(RED_STOP, 36));
         } else {
-            listenButton.setText(ready ? "●  LISTEN" : "Loading…");
-            listenButton.setBackground(rounded(ready ? 0xFF2E7D32 : 0xFF3A3F45));
+            listenButton.setText(ready ? "●   Listen" : "Loading…");
+            listenButton.setBackground(rounded(ready ? GREEN : SURFACE2, 36));
+            listenButton.setTextColor(ready ? Color.WHITE : MUTED);
         }
+        if (listening) listenButton.setTextColor(Color.WHITE);
     }
 
     private void setStatus(String s) { status.setText(s); }
 
     private TextView[] addEntry(Dir d, String original) {
+        // card = colored stripe + content
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setBackground(rounded(SURFACE, 16));
+        View stripe = new View(this);
+        stripe.setBackground(rounded(d.color, 2));
+        LinearLayout.LayoutParams stLp = new LinearLayout.LayoutParams(dp(4), ViewGroup.LayoutParams.MATCH_PARENT);
+        stLp.setMargins(dp(10), dp(12), 0, dp(12));
+        card.addView(stripe, stLp);
+
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(12), dp(10), dp(12), dp(12));
-        GradientDrawable bg = rounded(0xFF1C2026);
-        bg.setStroke(dp(2), d.color);
-        box.setBackground(bg);
+        box.setPadding(dp(12), dp(10), dp(14), dp(12));
+        card.addView(box, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        TextView src = new TextView(this);
-        src.setText(original);
-        src.setTextColor(0xFFB0B6BE);
+        TextView src = label(original, 15, MUTED);
         src.setTag("src");
 
-        TextView dst = new TextView(this);
-        dst.setText("…");
-        dst.setTextColor(Color.WHITE);
-        dst.setTypeface(Typeface.DEFAULT_BOLD);
+        TextView dst = label("…", 22, TEXT);
+        dst.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         dst.setTag("dst");
         dst.setPadding(0, dp(4), 0, 0);
+        dst.setLineSpacing(0, 1.1f);
+
+        TextView pron = label("", 17, GOLD);
+        pron.setTag("pron");
+        pron.setPadding(0, dp(4), 0, 0);
+        pron.setVisibility(View.GONE);
 
         box.addView(src);
         box.addView(dst);
-        box.setOnLongClickListener(v -> {
+        box.addView(pron);
+        card.setOnLongClickListener(v -> {
             ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
             if (cm != null) {
                 cm.setPrimaryClip(ClipData.newPlainText("translation", dst.getText()));
@@ -488,12 +601,46 @@ public class MainActivity extends Activity {
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(0, dp(6), 0, dp(6));
-        log.addView(box, lp);
+        lp.setMargins(0, dp(5), 0, dp(5));
+        log.addView(card, lp);
         while (log.getChildCount() > MAX_ENTRIES) log.removeViewAt(0);
-        styleEntry(box);
+        styleEntry(card);
+        updateEmpty();
         scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
-        return new TextView[]{src, dst};
+        return new TextView[]{src, dst, pron};
+    }
+
+    // ------------------------------------------------------------------ learning mode
+
+    private void togglePron() {
+        pronMode = !pronMode;
+        getPreferences(MODE_PRIVATE).edit().putBoolean("pron", pronMode).apply();
+        updatePronButton();
+        fillPronunciations();
+    }
+
+    private void updatePronButton() {
+        pronButton.setText(pronMode ? "Pronounce ✓" : "Pronounce");
+        pronButton.setBackground(pronMode ? outlined(0x33F5C451, GOLD, 20) : outlined(SURFACE2, BORDER, 20));
+        pronButton.setTextColor(pronMode ? GOLD : TEXT);
+    }
+
+    /** Remember which Russian text an entry's pronunciation line is for, and fill it in if possible. */
+    private void setPron(TextView view, String russian) {
+        pronLines.add(new Object[]{view, russian});
+        if (pronLines.size() > MAX_ENTRIES * 2) pronLines.remove(0);
+        fillPronunciations();
+    }
+
+    private void fillPronunciations() {
+        Pronouncer p = pronouncer;
+        for (Object[] e : pronLines) {
+            TextView v = (TextView) e[0];
+            if (p != null && v.getText().length() == 0) {
+                try { v.setText(p.pronounce((String) e[1])); } catch (Exception ignored) { }
+            }
+            v.setVisibility(pronMode && v.getText().length() > 0 ? View.VISIBLE : View.GONE);
+        }
     }
 
     private void setScale(float s) {
@@ -509,7 +656,8 @@ public class MainActivity extends Activity {
     }
 
     private void styleEntry(ViewGroup box) {
-        ((TextView) box.findViewWithTag("src")).setTextSize(TypedValue.COMPLEX_UNIT_SP, 16 * textScale);
-        ((TextView) box.findViewWithTag("dst")).setTextSize(TypedValue.COMPLEX_UNIT_SP, 24 * textScale);
+        ((TextView) box.findViewWithTag("src")).setTextSize(TypedValue.COMPLEX_UNIT_SP, 15 * textScale);
+        ((TextView) box.findViewWithTag("dst")).setTextSize(TypedValue.COMPLEX_UNIT_SP, 22 * textScale);
+        ((TextView) box.findViewWithTag("pron")).setTextSize(TypedValue.COMPLEX_UNIT_SP, 17 * textScale);
     }
 }

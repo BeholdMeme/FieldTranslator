@@ -9,6 +9,10 @@ Android phones (built for 3 GB-RAM phones like the Orbic Joy) and on a Windows l
 * No internet permission, no Google services, no accounts. Works on Huawei.
 * `A−` / `A+` change text size (handy for showing the screen to the other person),
   long-press a translation to copy it.
+* **Pronounce** (learning mode): shows how to say the Russian under each phrase, e.g.
+  *Привет, как дела?* → **pri-VYET, kak di-LA?** (capital syllable = stressed). Off by default.
+* **Learn to read**: the alphabet (33 letters with sounds and examples), six reading lessons that only
+  use letters you've learned so far, flashcards, and a 10-question quiz per lesson with saved best scores.
 
 ## Getting the app
 
@@ -38,6 +42,11 @@ HarmonyOS NEXT / 5+ (they can't run Android apps). Use the laptop version there.
 
 Only the selected direction's models are loaded (~600–800 MB RAM peak), so 3 GB phones are fine.
 Translation is greedy decoding with a KV cache; typically 0.3–1.5 s per phrase on a budget phone.
+
+## Credits
+
+Word list and stress marks for the pronunciation guide and lessons: [OpenRussian.org dictionary](https://github.com/Badestrand/russian-dictionary),
+CC BY-SA 4.0 (the generated `learn/` data is shared under the same license).
 
 ## Accuracy notes
 

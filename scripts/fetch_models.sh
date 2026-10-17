@@ -63,6 +63,15 @@ for pair in ru-en en-ru; do
   "$PY" "$ROOT/scripts/prepare_mt.py" "$d" "$ASSETS/mt/$pair"
 done
 
+# --- learning data: alphabet, lessons, stress dictionary (OpenRussian.org, CC BY-SA 4.0) ---
+OR_SHA=50e210c4803237779cb562bc1abcea529066031c
+mkdir -p "$CACHE/openrussian"
+for f in nouns verbs adjectives others; do
+  dl "https://raw.githubusercontent.com/Badestrand/russian-dictionary/$OR_SHA/$f.csv" "$CACHE/openrussian/$f.csv"
+done
+rm -rf "$ASSETS/learn"
+"$PY" "$ROOT/scripts/build_learning_data.py" "$CACHE/openrussian" "$ASSETS/learn"
+
 # total size, so the app can show install progress as a percentage
-du -sb "$ASSETS/asr" "$ASSETS/mt" | awk '{s+=$1} END {print s}' > "$ASSETS/models_size.txt"
+du -sb "$ASSETS/asr" "$ASSETS/mt" "$ASSETS/learn" | awk '{s+=$1} END {print s}' > "$ASSETS/models_size.txt"
 echo "models ready: $(du -sh "$ASSETS" | cut -f1)"
