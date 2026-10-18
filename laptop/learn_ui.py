@@ -95,6 +95,8 @@ class LearnWindow:
             self.button("Common phrases   ·   %d" % len(self.data["phrases"]), lambda: self.item_list("phrases"))
         if self.data.get("verses"):
             self.button("Bible verses   ·   %d" % len(self.data["verses"]), lambda: self.item_list("verses"))
+        if self.data.get("military"):
+            self.button("Military phrases   ·   %d" % len(self.data["military"]), lambda: self.item_list("military"))
         self.label("Pronunciation tips", 15, bold=True)
         for t in self.data.get("tips", []):
             self.label("• " + t, 12)
@@ -124,9 +126,12 @@ class LearnWindow:
         self.clear()
         verses = key == "verses"
         self.button("←  Back", self.home)
-        self.label("Bible verses" if verses else "Common phrases", 20, bold=True)
-        self.label("Russian Synodal translation with the King James Version. Gold = how to say it." if verses
-                   else "Gold = how to say it. The CAPITAL syllable is stressed.", 11, MUTED)
+        titles = {"verses": "Bible verses", "military": "Military phrases", "phrases": "Common phrases"}
+        notes = {"verses": "Russian Synodal translation with the King James Version. Gold = how to say it.",
+                 "military": "Short field commands, said loud and sharp. Gold = how to say it.",
+                 "phrases": "Gold = how to say it. The CAPITAL syllable is stressed."}
+        self.label(titles.get(key, key), 20, bold=True)
+        self.label(notes.get(key, ""), 11, MUTED)
         self.button("Practice as flashcards", lambda: self.item_card(key, 0), ACCENT)
         last = ""
         for it in self.data[key]:

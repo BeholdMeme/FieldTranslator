@@ -181,7 +181,7 @@ def selftest(wav=None):
             learn = json.load(fh)
         out.append("learning data: %d letters, %d lessons, %d phrases, %d verses" % (
             len(learn["alphabet"]), len(learn["lessons"]), len(learn.get("phrases", [])), len(learn.get("verses", []))))
-        if len(learn.get("phrases", [])) < 50 or len(learn.get("verses", [])) < 15:
+        if len(learn.get("phrases", [])) < 50 or len(learn.get("verses", [])) < 15 or len(learn.get("military", [])) < 25:
             ok = False
         import learn_ui  # noqa: F401  (checks the Learn window is bundled)
     except Exception:

@@ -120,3 +120,32 @@ VERSES = [
      "Любовь долготерпит, милосердствует, любовь не завидует, любовь не превозносится, не гордится.",
      "Charity suffereth long, and is kind; charity envieth not; charity vaunteth not itself, is not puffed up."),
 ]
+
+# Common military / field commands (educational phrasebook)
+MILITARY = [
+    ("Ложись!", "Get down!"),
+    ("В укрытие!", "Take cover!"),
+    ("Огонь!", "Fire!"),
+    ("Прекратить огонь!", "Cease fire!"),
+    ("Не стрелять!", "Hold fire! / Don't shoot!"),
+    ("Свои! Не стреляйте!", "Friendly! Don't shoot!"),
+    ("Я ранен!", "I'm hit! / I'm wounded!"),
+    ("Санитар!", "Medic!"),
+    ("Нужна помощь!", "We need help!"),
+    ("Мне нужна эвакуация.", "I need evacuation."),
+    ("Все целы?", "Is everyone okay?"),
+    ("Прикрой меня!", "Cover me!"),
+    ("За мной!", "Follow me!"),
+    ("Вперёд!", "Forward! / Move!"),
+    ("Назад!", "Back!"),
+    ("Отходим!", "Fall back!"),
+    ("Стой!", "Halt! / Stop!"),
+    ("Не двигаться!", "Don't move!"),
+    ("Руки вверх!", "Hands up!"),
+    ("Бросай оружие!", "Drop your weapon!"),
+    ("Сдаюсь!", "I surrender!"),
+    ("Противник!", "Enemy!"),
+    ("Граната!", "Grenade!"),
+    ("Тихо!", "Quiet!"),
+    ("Понял.", "Understood. / Copy."),
+]

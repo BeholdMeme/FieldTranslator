@@ -62,7 +62,7 @@ public final class Pronouncer {
                 {"есмь", "yesm'"}, {"сие", "si-YE"}, {"нашем", "NA-shem"},
                 {"ожидаемого", "a-zhy-DA-ye-muh-vuh"}, {"долготерпит", "duhl-ga-TYER-pit"},
                 {"превозносится", "pri-vaz-NO-si-tsuh"}, {"спасены", "spa-si-NY"},
-                {"изволению", "iz-va-LYE-ni-yoo"}, {"труждающиеся", "TROOZH-da-yoo-shi-ye-sya"},
+                {"изволению", "iz-va-LYE-ni-yoo"}, {"труждающиеся", "TROOZH-da-yoo-shi-ye-sya"}, {"руки", "ROO-ki"},
         };
         for (String[] e : ex) EXCEPTIONS.put(e[0], e[1]);
         for (String w : new String[]{"много", "немного", "строго", "нестрого", "дорого", "недорого", "убого", "полого", "отлого"}) {

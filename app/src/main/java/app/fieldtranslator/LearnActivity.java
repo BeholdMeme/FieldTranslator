@@ -134,6 +134,13 @@ public class LearnActivity extends Activity {
             page.addView(vb, full(0));
         }
 
+        JSONArray military = data.optJSONArray("military");
+        if (military != null) {
+            Button mb = button("Military phrases   ·   " + military.length(), BTN, v -> showList("military"));
+            mb.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+            page.addView(mb, full(0));
+        }
+
         page.addView(header("Pronunciation tips"));
         JSONArray tips = data.optJSONArray("tips");
         for (int i = 0; i < tips.length(); i++) page.addView(text("• " + tips.optString(i), 15, Color.WHITE, false));
@@ -215,8 +222,10 @@ public class LearnActivity extends Activity {
         JSONArray items = data.optJSONArray(key);
         boolean verses = key.equals("verses");
         page.addView(back());
-        page.addView(title(verses ? "Bible verses" : "Common phrases"));
+        boolean military = key.equals("military");
+        page.addView(title(verses ? "Bible verses" : military ? "Military phrases" : "Common phrases"));
         page.addView(text(verses ? "Russian Synodal translation with the King James Version. Gold = how to say it."
+                : military ? "Short field commands, said loud and sharp. Gold = how to say it."
                 : "Gold = how to say it. The CAPITAL syllable is stressed.", 14, MUTED, false));
         page.addView(button("Practice as flashcards", ACCENT, v -> showItemCard(key, 0, false)), full(0));
         String lastCat = "";
