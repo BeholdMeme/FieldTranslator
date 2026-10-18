@@ -15,7 +15,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "laptop"))
 from pronounce import StressDict, pronounce  # noqa: E402
-from phrases_data import MILITARY, PHRASES, VERSES  # noqa: E402
+from phrases_data import DRONES, MILITARY, PHRASES, VERSES  # noqa: E402
 
 VOWELS = "аеёиоуыэюя"
 FILES = ["others", "nouns", "verbs", "adjectives"]
@@ -162,7 +162,8 @@ def main(csv_dir, out_dir):
 
     phrases = [{"category": c, "ru": ru, "en": en, "pron": pronounce(ru, sd)} for c, ru, en in PHRASES]
     verses = [{"ref": ref, "ru": ru, "en": en, "pron": pronounce(ru, sd)} for ref, ru, en in VERSES]
-    military = [{"ru": ru, "en": en, "pron": pronounce(ru, sd)} for ru, en in MILITARY]
+    military = [{"category": "Commands", "ru": ru, "en": en, "pron": pronounce(ru, sd)} for ru, en in MILITARY]
+    military += [{"category": "Drones", "ru": ru, "en": en, "pron": pronounce(ru, sd)} for ru, en in DRONES]
     data = {"source": "Word list and stress: OpenRussian.org dictionary, CC BY-SA 4.0. "
                       "Bible verses: Russian Synodal translation and King James Version (both public domain).",
             "tips": TIPS, "alphabet": alphabet, "lessons": lessons, "phrases": phrases, "verses": verses,

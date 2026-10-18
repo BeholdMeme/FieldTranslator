@@ -49,6 +49,7 @@ EXCEPTIONS = {
     "превозносится": "pri-vaz-NO-si-tsuh", "спасены": "spa-si-NY", "изволению": "iz-va-LYE-ni-yoo",
     "труждающиеся": "TROOZH-da-yoo-shi-ye-sya",
     "руки": "ROO-ki",
+    "беспилотник": "bis-pi-LOT-nik", "нами": "NA-mi", "камикадзе": "kuh-mi-KA-dze",
 }
 # words ending in -ого/-его where г really is г
 OGO_KEEP_G = {"много", "немного", "строго", "нестрого", "дорого", "недорого", "убого", "полого", "отлого"}

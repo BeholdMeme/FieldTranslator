@@ -149,3 +149,15 @@ MILITARY = [
     ("Тихо!", "Quiet!"),
     ("Понял.", "Understood. / Copy."),
 ]
+
+# Drone warnings (shown as their own group inside Military phrases)
+DRONES = [
+    ("Дрон!", "Drone!"),
+    ("Беспилотник!", "UAV! (unmanned aircraft)"),
+    ("Воздух!", "Air threat! (lit. \"Air!\")"),
+    ("Дрон над нами!", "Drone overhead!"),
+    ("Слышу дрон.", "I hear a drone."),
+    ("Дрон-камикадзе!", "Kamikaze drone!"),
+    ("Все в укрытие, дрон!", "Everyone take cover, drone!"),
+    ("Замри! Дрон рядом.", "Freeze! Drone nearby."),
+]
