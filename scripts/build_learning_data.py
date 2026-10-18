@@ -59,6 +59,12 @@ ALPHABET = [
     ("Я", "ya", "ya as in yard", "я", "I"),
 ]
 
+# how each letter's name is written in Russian (what the voice reads)
+NAME_RU = {"А": "а", "Б": "бэ", "В": "вэ", "Г": "гэ", "Д": "дэ", "Е": "е", "Ё": "ё", "Ж": "жэ", "З": "зэ",
+           "И": "и", "Й": "и краткое", "К": "ка", "Л": "эль", "М": "эм", "Н": "эн", "О": "о", "П": "пэ",
+           "Р": "эр", "С": "эс", "Т": "тэ", "У": "у", "Ф": "эф", "Х": "ха", "Ц": "цэ", "Ч": "чэ", "Ш": "ша",
+           "Щ": "ща", "Ъ": "твёрдый знак", "Ы": "ы", "Ь": "мягкий знак", "Э": "э", "Ю": "ю", "Я": "я"}
+
 LESSONS = [
     ("Look the same, sound the same", "А К М О Т",
      "These five letters look and sound almost like English. You can already read real words!"),
@@ -145,7 +151,8 @@ def main(csv_dir, out_dir):
 
     alphabet = []
     for letter, name, sound, ex, meaning in ALPHABET:
-        alphabet.append({"upper": letter, "lower": letter.lower(), "name": name, "sound": sound,
+        alphabet.append({"upper": letter, "lower": letter.lower(), "name": name, "name_ru": NAME_RU[letter],
+                         "say": "%s. %s." % (NAME_RU[letter], ex), "sound": sound,
                          "example": ex, "example_pron": pronounce(ex, sd), "example_meaning": meaning})
 
     lessons, known = [], set()

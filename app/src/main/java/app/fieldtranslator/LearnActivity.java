@@ -172,6 +172,7 @@ public class LearnActivity extends Activity {
         TextView big = text(l.optString("upper") + " " + l.optString("lower"), 72, Color.WHITE, true);
         big.setGravity(Gravity.CENTER);
         page.addView(big);
+        page.addView(speakButton("🔊  Hear it", l.optString("say", l.optString("example"))));
         page.addView(card("Name", l.optString("name")));
         page.addView(card("Sound", l.optString("sound")));
         page.addView(card("Example", l.optString("example") + "\n" + l.optString("example_pron")
@@ -211,6 +212,7 @@ public class LearnActivity extends Activity {
         answer.setGravity(Gravity.CENTER);
         answer.setVisibility(View.INVISIBLE);
         page.addView(answer);
+        page.addView(speakButton("🔊  Hear it", w.optString("word")));
         page.addView(button("Show", BTN, v -> answer.setVisibility(View.VISIBLE)), full(dp(60)));
         page.addView(button("Next  →", ACCENT, v -> showCard(lessonIdx, i + 1)), full(dp(60)));
     }
@@ -248,6 +250,11 @@ public class LearnActivity extends Activity {
         if (showAll) {
             box.addView(text(it.optString("pron"), 16, GOLD, false));
             box.addView(text(it.optString("en"), 15, MUTED, false));
+            TextView hear = text("🔊  Hear it", 15, ACCENT, true);
+            hear.setPadding(0, dp(6), 0, 0);
+            final String ru = it.optString("ru");
+            hear.setOnClickListener(v -> Voice.say(this, ru));
+            box.addView(hear);
         }
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -274,6 +281,7 @@ public class LearnActivity extends Activity {
         final TextView ans = text(it.optString("pron") + "\n\n" + it.optString("en"), 19, GOLD, false);
         ans.setVisibility(revealed ? View.VISIBLE : View.INVISIBLE);
         page.addView(ans);
+        page.addView(speakButton("🔊  Hear it", it.optString("ru")));
         page.addView(button("Show", BTN, v -> ans.setVisibility(View.VISIBLE)), full(0));
         LinearLayout nav = new LinearLayout(this);
         nav.setOrientation(LinearLayout.HORIZONTAL);
@@ -485,6 +493,14 @@ public class LearnActivity extends Activity {
         box.setLayoutParams(lp);
         box.setPadding(dp(16), dp(12), dp(16), dp(12));
         return box;
+    }
+
+    private Button speakButton(String label, String russian) {
+        Button b = button(label, 0xFF1B2A45, v -> Voice.say(this, russian));
+        b.setTextColor(0xFF9CC3FF);
+        b.setGravity(Gravity.CENTER);
+        b.setLayoutParams(full(0));
+        return b;
     }
 
     private Button back() {

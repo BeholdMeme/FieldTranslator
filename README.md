@@ -11,6 +11,8 @@ Android phones (built for 3 GB-RAM phones like the Orbic Joy) and on a Windows l
   long-press a translation to copy it.
 * **Pronounce** (learning mode): shows how to say the Russian under each phrase, e.g.
   *Привет, как дела?* → **pri-VYET, kak di-LA?** (capital syllable = stressed). Off by default.
+* **Read aloud** (🔊 / ▶ hear): an offline Russian voice (Piper "irina") reads letters, words, phrases,
+  verses and the Russian lines in the translator. Loaded only when tapped, unloaded after 2 minutes idle.
 * **Learn to read**: the alphabet (33 letters with sounds and examples), six reading lessons that only
   use letters you've learned so far, flashcards, and a 10-question quiz per lesson with saved best scores.
 

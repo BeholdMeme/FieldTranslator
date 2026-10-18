@@ -64,8 +64,9 @@ jobs:
             "-PmtCases=$PWD/app/src/main/assets/mt/ru-en::$PWD/build/ref/ru-en.tsv;$PWD/app/src/main/assets/mt/en-ru::$PWD/build/ref/en-ru.tsv" \
             "-PasrCase=$PWD/app/src/main/assets/asr/ru-zipformer::$PWD/.model-cache/ru-zipformer/test.wav::$PWD/build/ref/asr-ru.txt" \
             "-PpronCase=$PWD/app/src/main/assets/learn/stress.tsv::$PWD/build/ref/pron.tsv" \
+            "-PttsDir=$PWD/app/src/main/assets/tts/ru" \
             2>&1 | tee test.log || { grep -E "error:|FAILED|expected|Exception|What went wrong" -A2 test.log | head -40 | sed 's/^/::error::/'; exit 1; }
-          grep -E "Russian ASR|cases identical|Pronunciation:" test.log | sed 's/^/::notice::/' || true
+          grep -E "Russian ASR|cases identical|Pronunciation:|Voice" test.log | sed 's/^/::notice::/' || true
 
       - name: Build APK
         run: |
@@ -85,6 +86,8 @@ jobs:
           done
           unzip -l "$APK" | grep -q "assets/asr/ru-zipformer/encoder.int8.onnx" || { echo "::error::Russian speech model missing"; exit 1; }
           unzip -l "$APK" | grep -q "assets/learn/learn.json" || { echo "::error::learning data missing"; exit 1; }
+          unzip -l "$APK" | grep -q "assets/tts/ru/model.onnx" || { echo "::error::voice missing"; exit 1; }
+          unzip -l "$APK" | grep -q "assets/tts/ru/espeak-ng-data/ru_dict" || { echo "::error::voice dictionary missing"; exit 1; }
           unzip -l "$APK" | grep -q "assets/mt/en-ru/decoder.onnx" || { echo "models missing"; exit 1; }
           cp "$APK" FieldTranslator.apk
 

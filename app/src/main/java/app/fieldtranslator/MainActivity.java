@@ -126,6 +126,7 @@ public class MainActivity extends Activity {
         stopListening();
         worker.execute(this::releaseEngine);
         worker.shutdown();
+        Voice.shutdown();
     }
 
     @Override
@@ -323,10 +324,10 @@ public class MainActivity extends Activity {
         lastPreviewSrc = "";
         if (text.trim().isEmpty()) return;
         final TextView[] entry = addEntry(d, text);
-        if (d == Dir.RU_EN) setPron(entry[2], text);
+        if (d == Dir.RU_EN) { setPron(entry[2], text); enableSpeaker(entry[3], text); }
         translateAsync(d, text, res -> {
             entry[1].setText(res.isEmpty() ? "—" : res);
-            if (d == Dir.EN_RU && !res.isEmpty()) setPron(entry[2], res);
+            if (d == Dir.EN_RU && !res.isEmpty()) { setPron(entry[2], res); enableSpeaker(entry[3], res); }
         });
     }
 
@@ -590,6 +591,12 @@ public class MainActivity extends Activity {
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(12), dp(10), dp(14), dp(12));
         card.addView(box, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView spk = label("🔊", 20, 0xFF9CC3FF);
+        spk.setGravity(Gravity.CENTER);
+        spk.setPadding(dp(10), dp(10), dp(14), dp(10));
+        spk.setVisibility(View.INVISIBLE);
+        card.addView(spk, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView src = label(original, 15, MUTED);
         src.setTag("src");
@@ -625,7 +632,7 @@ public class MainActivity extends Activity {
         styleEntry(card);
         updateEmpty();
         scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
-        return new TextView[]{src, dst, pron};
+        return new TextView[]{src, dst, pron, spk};
     }
 
     // ------------------------------------------------------------------ learning mode
@@ -635,6 +642,11 @@ public class MainActivity extends Activity {
         getPreferences(MODE_PRIVATE).edit().putBoolean("pron", pronMode).apply();
         updatePronButton();
         fillPronunciations();
+    }
+
+    private void enableSpeaker(TextView spk, String russian) {
+        spk.setVisibility(View.VISIBLE);
+        spk.setOnClickListener(v -> Voice.say(this, russian));
     }
 
     private void updatePronButton() {

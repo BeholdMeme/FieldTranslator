@@ -63,6 +63,20 @@ for pair in ru-en en-ru; do
   "$PY" "$ROOT/scripts/prepare_mt.py" "$d" "$ASSETS/mt/$pair"
 done
 
+# --- Russian voice for "read aloud" (Piper "irina", int8, via sherpa-onnx) ---
+dl "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-ru_RU-irina-medium-int8.tar.bz2" "$CACHE/tts-irina.tar.bz2"
+rm -rf "$CACHE/tts-x" "$ASSETS/tts"
+mkdir -p "$CACHE/tts-x" "$ASSETS/tts/ru"
+tar xjf "$CACHE/tts-irina.tar.bz2" -C "$CACHE/tts-x"
+src="$(find "$CACHE/tts-x" -maxdepth 1 -mindepth 1 -type d | head -1)"
+cp "$src/ru_RU-irina-medium.onnx" "$ASSETS/tts/ru/model.onnx"
+cp "$src/tokens.txt" "$ASSETS/tts/ru/tokens.txt"
+cp "$src/MODEL_CARD" "$ASSETS/tts/ru/MODEL_CARD" 2>/dev/null || true
+cp -r "$src/espeak-ng-data" "$ASSETS/tts/ru/espeak-ng-data"
+# keep only the Russian (and English, for Latin letters) pronunciation dictionaries
+find "$ASSETS/tts/ru/espeak-ng-data" -maxdepth 1 -name "*_dict" ! -name "ru_dict" ! -name "en_dict" -delete
+rm -rf "$CACHE/tts-x"
+
 # --- learning data: alphabet, lessons, stress dictionary (OpenRussian.org, CC BY-SA 4.0) ---
 OR_SHA=50e210c4803237779cb562bc1abcea529066031c
 mkdir -p "$CACHE/openrussian"
@@ -73,5 +87,5 @@ rm -rf "$ASSETS/learn"
 "$PY" "$ROOT/scripts/build_learning_data.py" "$CACHE/openrussian" "$ASSETS/learn"
 
 # total size, so the app can show install progress as a percentage
-du -sb "$ASSETS/asr" "$ASSETS/mt" "$ASSETS/learn" | awk '{s+=$1} END {print s}' > "$ASSETS/models_size.txt"
+du -sb "$ASSETS/asr" "$ASSETS/mt" "$ASSETS/learn" "$ASSETS/tts" | awk '{s+=$1} END {print s}' > "$ASSETS/models_size.txt"
 echo "models ready: $(du -sh "$ASSETS" | cut -f1)"

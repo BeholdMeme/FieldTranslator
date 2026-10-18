@@ -10,7 +10,8 @@ FONT = "Segoe UI"
 
 
 class LearnWindow:
-    def __init__(self, root, models_dir, settings, save_settings):
+    def __init__(self, root, models_dir, settings, save_settings, voice=None):
+        self.voice = voice
         with open(os.path.join(models_dir, "learn", "learn.json"), encoding="utf-8") as f:
             self.data = json.load(f)
         self.settings = settings
@@ -65,6 +66,17 @@ class LearnWindow:
         tk.Label(f, text=body, bg=CARD, fg="white", font=(FONT, 15), anchor="w", justify="left",
                  wraplength=660).pack(fill="x", padx=10, pady=(0, 8))
 
+    def hear(self, russian, parent=None):
+        """'▶ Hear it' button that reads Russian aloud."""
+        if not self.voice:
+            return None
+        b = tk.Button(parent or self.page, text="▶  Hear it", command=lambda: self.voice.say(russian),
+                      bg="#1B2A45", fg="#9CC3FF", bd=0, activebackground="#24385C", activeforeground="#9CC3FF",
+                      font=(FONT, 12, "bold"), cursor="hand2", relief="flat")
+        if parent is None:
+            b.pack(fill="x", padx=16, pady=4, ipady=6)
+        return b
+
     def letter(self, upper):
         for l in self.data["alphabet"]:
             if l["upper"] == upper:
@@ -112,6 +124,7 @@ class LearnWindow:
         self.win.bind("<Left>", lambda e: self.show_letter(prev_l))
         self.win.bind("<Right>", lambda e: self.show_letter(next_l))
         self.label(l["upper"] + " " + l["lower"], 54, bold=True, center=True)
+        self.hear(l.get("say", l["example"]))
         self.card("Name", l["name"])
         self.card("Sound", l["sound"])
         self.card("Example", "%s\n%s\n%s" % (l["example"], l["example_pron"], l["example_meaning"]))
@@ -147,6 +160,11 @@ class LearnWindow:
             for txt_, col, size in ((it["ru"], "white", 15), (it["pron"], GOLD, 12), (it["en"], MUTED, 11)):
                 tk.Label(f, text=txt_, bg=CARD, fg=col, font=(FONT, size), anchor="w", justify="left",
                          wraplength=660).pack(fill="x", padx=12, pady=1)
+            if self.voice:
+                h = tk.Label(f, text="▶  hear", bg=CARD, fg="#9CC3FF", font=(FONT, 10, "bold"), cursor="hand2",
+                             anchor="w")
+                h.pack(fill="x", padx=12, pady=(2, 0))
+                h.bind("<Button-1>", lambda e, r=it["ru"]: self.voice.say(r))
             tk.Frame(f, bg=CARD, height=6).pack()
 
     def item_card(self, key, n):
@@ -159,6 +177,7 @@ class LearnWindow:
             self.label(it["ref"], 13, ACCENT, bold=True)
         self.label(it["ru"], 18 if key == "verses" else 26, bold=True)
         ans = self.label("", 15, GOLD)
+        self.hear(it["ru"])
         self.button("Show", lambda: ans.configure(text="%s\n\n%s" % (it["pron"], it["en"])))
         nav = tk.Frame(self.page, bg=BG)
         nav.pack(fill="x", padx=16, pady=6)
@@ -191,6 +210,7 @@ class LearnWindow:
         self.label("Card %d of %d - read it out loud, then click Show" % (n % len(words) + 1, len(words)), 11, MUTED)
         self.label(w["word"], 44, bold=True, center=True)
         ans = self.label("", 20, GOLD, center=True)
+        self.hear(w["word"])
         self.button("Show", lambda: ans.configure(text="%s\n%s" % (w["pron"], w["meaning"])))
         self.button("Next  →", lambda: self.flashcard(i, n + 1), ACCENT)
 

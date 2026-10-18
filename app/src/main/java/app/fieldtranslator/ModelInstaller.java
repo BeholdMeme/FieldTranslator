@@ -20,7 +20,7 @@ import java.nio.charset.StandardCharsets;
 final class ModelInstaller {
     interface Progress { void update(long copiedBytes, long totalBytes); }
 
-    private static final String[] DIRS = {"asr/ru-zipformer", "asr/en", "mt/ru-en", "mt/en-ru", "learn"};
+    private static final String[] DIRS = {"asr/ru-zipformer", "asr/en", "mt/ru-en", "mt/en-ru", "learn", "tts/ru"};
 
     static File root(Context c) { return new File(c.getFilesDir(), "models"); }
 

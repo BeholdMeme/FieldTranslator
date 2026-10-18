@@ -15,6 +15,7 @@ import traceback
 
 from translator_core import MarianTranslator
 from pronounce import StressDict, pronounce
+from speaker import Voice
 
 SAMPLE_RATE = 16000
 
@@ -184,6 +185,13 @@ def selftest(wav=None):
         if len(learn.get("phrases", [])) < 50 or len(learn.get("verses", [])) < 15 or len(learn.get("military", [])) < 25:
             ok = False
         import learn_ui  # noqa: F401  (checks the Learn window is bundled)
+        from speaker import Speaker
+        spk = Speaker(os.path.join(models, "tts", "ru"))
+        samples, rate = spk.synth("Привет, как дела?")
+        secs = len(samples) / float(rate)
+        out.append("voice: %.2f s of audio at %d Hz" % (secs, rate))
+        if secs < 0.4:
+            ok = False
     except Exception:
         ok = False
         out.append(traceback.format_exc())
@@ -202,6 +210,7 @@ def run_gui():
     engine = Engine(models)
     stress_path = os.path.join(models, "learn", "stress.tsv")
     stress = StressDict(stress_path) if os.path.isfile(stress_path) else StressDict()
+    voice = Voice(os.path.join(models, "tts", "ru"), on_error=lambda m: events.put(("status", m)))
     settings_path = os.path.join(os.path.expanduser("~"), ".fieldtranslator.json")
     try:
         with open(settings_path, encoding="utf-8") as fh:
@@ -318,7 +327,7 @@ def run_gui():
 
     def open_learn():
         from learn_ui import LearnWindow
-        LearnWindow(root, models, settings, save_settings)
+        LearnWindow(root, models, settings, save_settings, voice)
     chip(chips, "Learn to read", open_learn).pack(side="left", padx=6)
     chip(chips, "Clear", lambda: clear()).pack(side="right", padx=(6, 0))
     chip(chips, "A+", lambda: set_scale(state["scale"] * 1.15), 3).pack(side="right", padx=6)
@@ -346,6 +355,7 @@ def run_gui():
         txt.tag_configure("hint", foreground=MUTED, font=(F, int(12 * s)), justify="center", spacing1=40)
         txt.tag_configure("src", foreground=MUTED, font=(F, int(11 * s)), spacing1=18)
         txt.tag_configure("dst", foreground=TEXT, font=(F, int(17 * s), "bold"), spacing1=3)
+        txt.tag_configure("hear", foreground="#9CC3FF", font=(F, int(11 * s), "bold"))
         txt.tag_configure("pron", foreground=GOLD, font=(F, int(13 * s)), spacing1=3,
                           elide=not settings.get("pron", False))
         partial_lbl.configure(font=("Segoe UI", int(13 * s), "italic"))
@@ -402,6 +412,15 @@ def run_gui():
         txt.insert(pmark, p, ("pron",))
         txt.configure(state="disabled")
         txt.see("end")
+
+    def add_hear(index, russian):
+        """Clickable '▶ hear' link that reads the Russian aloud."""
+        entry_counter[0] += 1
+        tag = "spk%d" % entry_counter[0]
+        txt.configure(state="normal")
+        txt.insert(index, "   ▶ hear", ("hear", tag))
+        txt.configure(state="disabled")
+        txt.tag_bind(tag, "<Button-1>", lambda e, r=russian: voice.say(r))
 
     def save_settings():
         try:
@@ -568,11 +587,13 @@ def run_gui():
                 mark, pmark = add_entry(text)
                 if pair == "ru-en":
                     fill_pron(pmark, text)
+                    add_hear("%s -1c" % mark, text)
 
                 def done(r, m=mark, pm=pmark, p=pair):
                     fill_entry(m, r)
                     if p == "en-ru" and r:
                         fill_pron(pm, r)
+                        add_hear("%s lineend" % m, r)
                 translate_async(pair, text, done)
 
     def drain_events():
@@ -594,6 +615,8 @@ def run_gui():
                            "Settings > Privacy > Microphone > 'Let desktop apps access your microphone'.")
         root.after(50, pump)
 
+    txt.tag_bind("hear", "<Enter>", lambda e: txt.configure(cursor="hand2"))
+    txt.tag_bind("hear", "<Leave>", lambda e: txt.configure(cursor="arrow"))
     root.bind("<space>", lambda e: toggle_listen())
     root.bind("<Tab>", lambda e: (toggle(), "break")[1])
     root.protocol("WM_DELETE_WINDOW", lambda: (stop_listening(), root.destroy()))
