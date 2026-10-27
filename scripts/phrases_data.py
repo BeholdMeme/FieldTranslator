@@ -161,3 +161,51 @@ DRONES = [
     ("Все в укрытие, дрон!", "Everyone take cover, drone!"),
     ("Замри! Дрон рядом.", "Freeze! Drone nearby."),
 ]
+
+# Colors: (Russian, English, swatch hex)
+COLORS = [
+    ("красный", "red", "#E53935"),
+    ("оранжевый", "orange", "#FB8C00"),
+    ("жёлтый", "yellow", "#FDD835"),
+    ("зелёный", "green", "#43A047"),
+    ("голубой", "light blue", "#4FC3F7"),
+    ("синий", "blue (dark blue)", "#1E40C8"),
+    ("фиолетовый", "purple", "#8E24AA"),
+    ("розовый", "pink", "#F06292"),
+    ("коричневый", "brown", "#795548"),
+    ("серый", "gray", "#9E9E9E"),
+    ("чёрный", "black", "#111111"),
+    ("белый", "white", "#FFFFFF"),
+]
+COLOR_TIPS = [
+    "Russian has two blues: голубой (light, sky blue) and синий (dark blue). To Russians they are different colors.",
+    "Color words change their ending to match the thing: красный дом (red house), красная машина (red car), красное яблоко (red apple).",
+    "Ask \"what color?\": Какого цвета? - and answer: Он красный (it's red).",
+]
+COLOR_EXAMPLES = [
+    ("Какого цвета?", "What color?"),
+    ("Красный дом.", "A red house."),
+    ("Красная машина.", "A red car."),
+    ("Белое небо.", "A white sky."),
+    ("Мой любимый цвет - синий.", "My favorite color is blue."),
+]
+
+# Numbers lesson: (title, note, list of numbers)
+NUMBER_GROUPS = [
+    ("0 – 10", "Learn these first - every other number is built from them.", list(range(0, 11))),
+    ("11 – 19", "The small number + надцать (\"on ten\"). So 15 = пять + надцать.", list(range(11, 20))),
+    ("Tens", "20 and 30 end in -дцать, 50–80 end in -десят. 40 (сорок) and 90 (девяносто) are one-offs.",
+     [20, 30, 40, 50, 60, 70, 80, 90]),
+    ("Hundreds", "100 is сто. Then двести (200), -ста for 300–400, and -сот for 500–900.",
+     [100, 200, 300, 400, 500, 600, 700, 800, 900]),
+    ("Big numbers", "тысяча = thousand, миллион = million, миллиард = billion.",
+     [1000, 2000, 5000, 10000, 20000, 100000, 1000000, 2000000, 5000000, 1000000000]),
+    ("Putting it together", "Say each part, biggest first. There is no \"and\": 2,025 = две тысячи двадцать пять.",
+     [21, 35, 99, 101, 250, 1999, 2025, 20500, 150000, 1250000]),
+]
+NUMBER_TIPS = [
+    "Build any number piece by piece, biggest part first: 345 = триста (300) сорок (40) пять (5).",
+    "After 1 the thousand word is тысяча, after 2–4 it's тысячи, after 5–20 it's тысяч. 21 starts over: двадцать одна тысяча.",
+    "Same idea for millions: один миллион, два миллиона, пять миллионов.",
+    "With thousands, 1 and 2 become одна and две (тысяча is feminine): одна тысяча, две тысячи.",
+]

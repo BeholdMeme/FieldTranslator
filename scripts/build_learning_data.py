@@ -15,7 +15,10 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "laptop"))
 from pronounce import StressDict, pronounce  # noqa: E402
-from phrases_data import DRONES, MILITARY, PHRASES, VERSES  # noqa: E402
+from phrases_data import (COLOR_EXAMPLES, COLOR_TIPS, COLORS, DRONES, MILITARY, NUMBER_GROUPS,  # noqa: E402
+                          NUMBER_TIPS, PHRASES, VERSES)
+from ru_numbers import format_digits, to_words  # noqa: E402
+from pronounce import EXCEPTIONS  # noqa: E402
 
 VOWELS = "аеёиоуыэюя"
 FILES = ["others", "nouns", "verbs", "adjectives"]
@@ -171,10 +174,20 @@ def main(csv_dir, out_dir):
     verses = [{"ref": ref, "ru": ru, "en": en, "pron": pronounce(ru, sd)} for ref, ru, en in VERSES]
     military = [{"category": "Commands", "ru": ru, "en": en, "pron": pronounce(ru, sd)} for ru, en in MILITARY]
     military += [{"category": "Drones", "ru": ru, "en": en, "pron": pronounce(ru, sd)} for ru, en in DRONES]
+    def num(n):
+        w = to_words(n)
+        return {"n": n, "digits": format_digits(n), "ru": w, "pron": pronounce(w, sd)}
+    numbers = {"groups": [{"title": t, "note": note, "items": [num(n) for n in ns]} for t, note, ns in NUMBER_GROUPS],
+               "tips": NUMBER_TIPS}
+    colors = {"items": [{"ru": ru, "en": en, "hex": hx, "pron": pronounce(ru, sd)} for ru, en, hx in COLORS],
+              "tips": COLOR_TIPS,
+              "examples": [{"ru": ru, "en": en, "pron": pronounce(ru, sd)} for ru, en in COLOR_EXAMPLES]}
     data = {"source": "Word list and stress: OpenRussian.org dictionary, CC BY-SA 4.0. "
                       "Bible verses: Russian Synodal translation and King James Version (both public domain).",
             "tips": TIPS, "alphabet": alphabet, "lessons": lessons, "phrases": phrases, "verses": verses,
-            "military": military}
+            "military": military, "numbers": numbers, "colors": colors,
+            # the web app's pronunciation code reads its exception list from here
+            "pron_exceptions": EXCEPTIONS}
     with open(os.path.join(out_dir, "learn.json"), "w", encoding="utf-8", newline="\n") as fh:
         json.dump(data, fh, ensure_ascii=False, indent=1)
     print("stress forms: %d, vocab: %d, phrases: %d, verses: %d, military: %d" % (

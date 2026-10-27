@@ -50,6 +50,8 @@ EXCEPTIONS = {
     "труждающиеся": "TROOZH-da-yoo-shi-ye-sya",
     "руки": "ROO-ki",
     "беспилотник": "bis-pi-LOT-nik", "нами": "NA-mi", "камикадзе": "kuh-mi-KA-dze",
+    # numbers
+    "одна": "ad-NA", "одно": "ad-NO", "одиннадцать": "a-DEE-nuh-tsuht'", "двенадцать": "dvi-NA-tsuht'", "тринадцать": "tri-NA-tsuht'", "четырнадцать": "chi-TYR-nuh-tsuht'", "пятнадцать": "pit-NA-tsuht'", "шестнадцать": "shys-NA-tsuht'", "семнадцать": "sim-NA-tsuht'", "восемнадцать": "vuh-sim-NA-tsuht'", "девятнадцать": "di-vit-NA-tsuht'", "двадцать": "DVA-tsuht'", "тридцать": "TREE-tsuht'", "пятьдесят": "pid-di-SYAT", "шестьдесят": "shyz-di-SYAT", "семьдесят": "SYEM-di-syat", "восемьдесят": "VO-sim-di-syat", "шестьсот": "shys-SOT",
 }
 # words ending in -ого/-его where г really is г
 OGO_KEEP_G = {"много", "немного", "строго", "нестрого", "дорого", "недорого", "убого", "полого", "отлого"}
@@ -160,7 +162,7 @@ def _word(word, sd):
                 pretonic = stressed_vn is not None and vn == stressed_vn - 1
                 initial = i == 0
                 if ch in "оа":
-                    if prev in "чщ":
+                    if prev in "чщ" and not last:
                         v = "i"
                     else:
                         v = "a" if (pretonic or initial) else "uh"

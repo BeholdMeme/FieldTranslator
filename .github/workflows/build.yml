@@ -54,6 +54,9 @@ jobs:
       - name: Check pronunciation guide (Python)
         run: python scripts/check_pronounce.py app/src/main/assets/learn/stress.tsv build/ref/pron.tsv
 
+      - name: Check number words (Python)
+        run: python scripts/check_numbers.py build/ref/numbers.tsv
+
       - name: Check Russian speech recognition (Python)
         run: python scripts/check_asr.py app/src/main/assets/asr/ru-zipformer .model-cache/ru-zipformer/test.wav build/ref/asr-ru.txt
 
@@ -65,8 +68,9 @@ jobs:
             "-PasrCase=$PWD/app/src/main/assets/asr/ru-zipformer::$PWD/.model-cache/ru-zipformer/test.wav::$PWD/build/ref/asr-ru.txt" \
             "-PpronCase=$PWD/app/src/main/assets/learn/stress.tsv::$PWD/build/ref/pron.tsv" \
             "-PttsDir=$PWD/app/src/main/assets/tts/ru" \
+            "-PnumRef=$PWD/build/ref/numbers.tsv" \
             2>&1 | tee test.log || { grep -E "error:|FAILED|expected|Exception|What went wrong" -A2 test.log | head -40 | sed 's/^/::error::/'; exit 1; }
-          grep -E "Russian ASR|cases identical|Pronunciation:|Voice" test.log | sed 's/^/::notice::/' || true
+          grep -E "Russian ASR|cases identical|Pronunciation:|Voice|Numbers:" test.log | sed 's/^/::notice::/' || true
 
       - name: Build APK
         run: |

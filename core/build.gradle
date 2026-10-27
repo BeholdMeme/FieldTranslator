@@ -27,6 +27,7 @@ test {
     systemProperty 'asr.case', (project.findProperty('asrCase') ?: '')
     systemProperty 'pron.case', (project.findProperty('pronCase') ?: '')
     systemProperty 'tts.dir', (project.findProperty('ttsDir') ?: '')
+    systemProperty 'num.ref', (project.findProperty('numRef') ?: '')
     maxHeapSize = '2g'
     testLogging {
         events 'passed', 'failed'

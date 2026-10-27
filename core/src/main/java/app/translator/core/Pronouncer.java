@@ -63,6 +63,7 @@ public final class Pronouncer {
                 {"ожидаемого", "a-zhy-DA-ye-muh-vuh"}, {"долготерпит", "duhl-ga-TYER-pit"},
                 {"превозносится", "pri-vaz-NO-si-tsuh"}, {"спасены", "spa-si-NY"},
                 {"изволению", "iz-va-LYE-ni-yoo"}, {"труждающиеся", "TROOZH-da-yoo-shi-ye-sya"}, {"руки", "ROO-ki"}, {"беспилотник", "bis-pi-LOT-nik"}, {"нами", "NA-mi"}, {"камикадзе", "kuh-mi-KA-dze"},
+               {"одна", "ad-NA"}, {"одно", "ad-NO"}, {"одиннадцать", "a-DEE-nuh-tsuht'"}, {"двенадцать", "dvi-NA-tsuht'"}, {"тринадцать", "tri-NA-tsuht'"}, {"четырнадцать", "chi-TYR-nuh-tsuht'"}, {"пятнадцать", "pit-NA-tsuht'"}, {"шестнадцать", "shys-NA-tsuht'"}, {"семнадцать", "sim-NA-tsuht'"}, {"восемнадцать", "vuh-sim-NA-tsuht'"}, {"девятнадцать", "di-vit-NA-tsuht'"}, {"двадцать", "DVA-tsuht'"}, {"тридцать", "TREE-tsuht'"}, {"пятьдесят", "pid-di-SYAT"}, {"шестьдесят", "shyz-di-SYAT"}, {"семьдесят", "SYEM-di-syat"}, {"восемьдесят", "VO-sim-di-syat"}, {"шестьсот", "shys-SOT"},
         };
         for (String[] e : ex) EXCEPTIONS.put(e[0], e[1]);
         for (String w : new String[]{"много", "немного", "строго", "нестрого", "дорого", "недорого", "убого", "полого", "отлого"}) {
@@ -217,7 +218,7 @@ public final class Pronouncer {
                     boolean pretonic = stressedVn >= 0 && vn == stressedVn - 1;
                     boolean initial = i == 0;
                     if (ch == 'о' || ch == 'а') {
-                        if (prev == 'ч' || prev == 'щ') v = "i";
+                        if ((prev == 'ч' || prev == 'щ') && !last) v = "i";
                         else v = (pretonic || initial) ? "a" : "uh";
                     } else if (ch == 'я') {
                         if (last) v = "a";

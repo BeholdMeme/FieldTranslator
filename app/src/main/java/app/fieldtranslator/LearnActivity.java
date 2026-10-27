@@ -16,6 +16,11 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import android.text.Editable;
+import android.text.InputType;
+import android.text.TextWatcher;
+import android.widget.EditText;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -27,6 +32,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
+
+import app.translator.core.Pronouncer;
+import app.translator.core.RussianNumbers;
 
 /**
  * "Learn to read Russian": the alphabet, six reading lessons (each only uses letters you
@@ -118,6 +126,19 @@ public class LearnActivity extends Activity {
             btn.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
             btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
             page.addView(btn, full(dp(76)));
+        }
+
+        page.addView(header("Numbers & colors"));
+        if (data.optJSONObject("numbers") != null) {
+            Button nb = button("Numbers   ·   say any number", BTN, v -> showNumbers());
+            nb.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+            page.addView(nb, full(0));
+        }
+        if (data.optJSONObject("colors") != null) {
+            Button cb = button("Colors   ·   " + data.optJSONObject("colors").optJSONArray("items").length(), BTN,
+                    v -> showColors());
+            cb.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+            page.addView(cb, full(0));
         }
 
         page.addView(header("Phrases & verses"));
@@ -217,6 +238,226 @@ public class LearnActivity extends Activity {
         page.addView(button("Next  →", ACCENT, v -> showCard(lessonIdx, i + 1)), full(dp(60)));
     }
 
+    // ------------------------------------------------------------------ numbers
+
+    private Pronouncer pronouncer;
+
+    private Pronouncer pron() {
+        if (pronouncer == null) {
+            try {
+                pronouncer = new Pronouncer(new Pronouncer.StressDict(new File(ModelInstaller.root(this), "learn/stress.tsv")));
+            } catch (Exception e) {
+                pronouncer = new Pronouncer(null);
+            }
+        }
+        return pronouncer;
+    }
+
+    private void showNumbers() {
+        clear("numbers");
+        JSONObject nums = data.optJSONObject("numbers");
+        page.addView(back());
+        page.addView(title("Numbers"));
+
+        // --- say any number
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setBackground(round(0xFF15233A));
+        box.setPadding(dp(16), dp(12), dp(16), dp(14));
+        box.addView(text("Say any number", 14, 0xFF9CC3FF, true));
+        final EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_NUMBER);
+        input.setHint("Type a number, e.g. 2025");
+        input.setHintTextColor(MUTED);
+        input.setTextColor(Color.WHITE);
+        input.setTextSize(TypedValue.COMPLEX_UNIT_SP, 26);
+        input.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(12)});
+        box.addView(input);
+        final TextView words = text("", 22, Color.WHITE, true);
+        final TextView pr = text("", 17, GOLD, false);
+        box.addView(words);
+        box.addView(pr);
+        final String[] current = {""};
+        Button hear = button("🔊  Hear it", 0xFF1B2A45, v -> Voice.say(this, current[0]));
+        hear.setTextColor(0xFF9CC3FF);
+        hear.setGravity(Gravity.CENTER);
+        box.addView(hear, full(0));
+        input.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void afterTextChanged(Editable e) {
+                String t = e.toString().trim();
+                if (t.isEmpty()) { words.setText(""); pr.setText(""); current[0] = ""; return; }
+                try {
+                    long n = Long.parseLong(t);
+                    String w = RussianNumbers.toWords(n);
+                    current[0] = w;
+                    words.setText(w);
+                    pr.setText(pron().pronounce(w));
+                } catch (Exception ex) {
+                    words.setText("Up to 999,999,999,999");
+                    pr.setText("");
+                    current[0] = "";
+                }
+            }
+        });
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        blp.setMargins(0, dp(6), 0, dp(6));
+        page.addView(box, blp);
+        page.addView(button("Take the numbers quiz (10 questions)", GOOD, v -> startNumberQuiz()), full(0));
+
+        // --- lesson groups
+        JSONArray groups = nums.optJSONArray("groups");
+        for (int g = 0; g < groups.length(); g++) {
+            JSONObject grp = groups.optJSONObject(g);
+            page.addView(header(grp.optString("title")));
+            page.addView(text(grp.optString("note"), 14, MUTED, false));
+            JSONArray items = grp.optJSONArray("items");
+            for (int i = 0; i < items.length(); i++) page.addView(numberRow(items.optJSONObject(i)));
+        }
+        page.addView(header("How it works"));
+        JSONArray tips = nums.optJSONArray("tips");
+        for (int i = 0; i < tips.length(); i++) page.addView(text("• " + tips.optString(i), 15, Color.WHITE, false));
+    }
+
+    private View numberRow(JSONObject it) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setBackground(round(CARD));
+        row.setPadding(dp(14), dp(10), dp(10), dp(10));
+        TextView digits = text(it.optString("digits"), 22, ACCENT, true);
+        digits.setMinWidth(dp(96));
+        row.addView(digits);
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.addView(text(it.optString("ru"), 18, Color.WHITE, false));
+        col.addView(text(it.optString("pron"), 14, GOLD, false));
+        row.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView spk = text("🔊", 20, 0xFF9CC3FF, false);
+        spk.setPadding(dp(8), 0, dp(6), 0);
+        row.addView(spk);
+        final String ru = it.optString("ru");
+        row.setOnClickListener(v -> Voice.say(this, ru));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, dp(4), 0, dp(4));
+        row.setLayoutParams(lp);
+        return row;
+    }
+
+    private long randomQuizNumber() {
+        int r = rnd.nextInt(10);
+        if (r < 3) return rnd.nextInt(20);
+        if (r < 5) return 20 + rnd.nextInt(80);
+        if (r < 7) return 100 + rnd.nextInt(900);
+        if (r < 9) return 1000 + rnd.nextInt(99000);
+        return 100000L + rnd.nextInt(9900000);
+    }
+
+    private void startNumberQuiz() {
+        List<Q> qs = new ArrayList<>();
+        for (int n = 0; n < 10; n++) {
+            long num = randomQuizNumber();
+            Q q = new Q();
+            List<Long> opts = new ArrayList<>();
+            opts.add(num);
+            while (opts.size() < 4) {
+                long d = Math.max(0, num + (rnd.nextBoolean() ? 1 : -1) * (1 + rnd.nextInt((int) Math.max(3, Math.min(num / 3 + 3, 5000)))));
+                if (rnd.nextInt(3) == 0) d = randomQuizNumber();
+                if (!opts.contains(d)) opts.add(d);
+            }
+            Collections.shuffle(opts, rnd);
+            q.choices = new ArrayList<>();
+            if (n % 2 == 0) {
+                q.prompt = "How do you say this number?";
+                q.big = RussianNumbers.formatDigits(num);
+                q.answer = RussianNumbers.toWords(num);
+                for (long o : opts) q.choices.add(RussianNumbers.toWords(o));
+            } else {
+                q.prompt = "Which number is this?";
+                q.big = RussianNumbers.toWords(num);
+                q.answer = RussianNumbers.formatDigits(num);
+                for (long o : opts) q.choices.add(RussianNumbers.formatDigits(o));
+            }
+            qs.add(q);
+        }
+        showQuestion(-1, qs, 0, 0);
+    }
+
+    // ------------------------------------------------------------------ colors
+
+    private void showColors() {
+        clear("colors");
+        JSONObject cols = data.optJSONObject("colors");
+        page.addView(back());
+        page.addView(title("Colors"));
+        page.addView(text("Tap a color to hear it.", 14, MUTED, false));
+        JSONArray items = cols.optJSONArray("items");
+        for (int i = 0; i < items.length(); i++) {
+            JSONObject c = items.optJSONObject(i);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setBackground(round(CARD));
+            row.setPadding(dp(12), dp(10), dp(10), dp(10));
+            View sw = new View(this);
+            GradientDrawable g = new GradientDrawable();
+            g.setShape(GradientDrawable.OVAL);
+            g.setColor(Color.parseColor(c.optString("hex")));
+            g.setStroke(dp(1), 0x55FFFFFF);
+            sw.setBackground(g);
+            LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(dp(40), dp(40));
+            slp.setMargins(0, 0, dp(14), 0);
+            row.addView(sw, slp);
+            LinearLayout col = new LinearLayout(this);
+            col.setOrientation(LinearLayout.VERTICAL);
+            col.addView(text(c.optString("ru"), 20, Color.WHITE, true));
+            col.addView(text(c.optString("pron") + "   ·   " + c.optString("en"), 14, GOLD, false));
+            row.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            row.addView(text("🔊", 20, 0xFF9CC3FF, false));
+            final String ru = c.optString("ru");
+            row.setOnClickListener(v -> Voice.say(this, ru));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.setMargins(0, dp(4), 0, dp(4));
+            page.addView(row, lp);
+        }
+        page.addView(button("Take the colors quiz (10 questions)", GOOD, v -> startColorQuiz()), full(0));
+        page.addView(header("Good to know"));
+        JSONArray tips = cols.optJSONArray("tips");
+        for (int i = 0; i < tips.length(); i++) page.addView(text("• " + tips.optString(i), 15, Color.WHITE, false));
+        page.addView(header("Examples"));
+        JSONArray ex = cols.optJSONArray("examples");
+        for (int i = 0; i < ex.length(); i++) page.addView(itemCard(ex.optJSONObject(i), true));
+    }
+
+    private void startColorQuiz() {
+        JSONArray items = data.optJSONObject("colors").optJSONArray("items");
+        List<JSONObject> all = new ArrayList<>();
+        for (int i = 0; i < items.length(); i++) all.add(items.optJSONObject(i));
+        List<Q> qs = new ArrayList<>();
+        for (int n = 0; n < 10; n++) {
+            JSONObject c = all.get(rnd.nextInt(all.size()));
+            Q q = new Q();
+            if (n % 2 == 0) {
+                q.prompt = "What color is this word?";
+                q.big = c.optString("ru");
+                q.answer = c.optString("en");
+                q.choices = choices(q.answer, all, "en");
+            } else {
+                q.prompt = "How do you say \"" + c.optString("en") + "\" in Russian?";
+                q.big = "●";
+                q.swatch = c.optString("hex");
+                q.answer = c.optString("ru");
+                q.choices = choices(q.answer, all, "ru");
+            }
+            qs.add(q);
+        }
+        showQuestion(-2, qs, 0, 0);
+    }
+
     // ------------------------------------------------------------------ phrases & verses
 
     private void showList(String key) {
@@ -301,7 +542,7 @@ public class LearnActivity extends Activity {
     // ------------------------------------------------------------------ quiz
 
     private static final class Q {
-        String prompt, big, answer;
+        String prompt, big, answer, swatch;
         List<String> choices;
     }
 
@@ -374,7 +615,8 @@ public class LearnActivity extends Activity {
         page.addView(back());
         page.addView(text("Question " + (i + 1) + " of " + qs.size() + "   ·   score " + score, 14, MUTED, false));
         page.addView(text(q.prompt, 18, Color.WHITE, false));
-        TextView big = text(q.big, 52, Color.WHITE, true);
+        TextView big = text(q.big, q.big.length() > 14 ? 30 : 52, Color.WHITE, true);
+        if (q.swatch != null) { big.setTextColor(Color.parseColor(q.swatch)); big.setTextSize(TypedValue.COMPLEX_UNIT_SP, 96); }
         big.setGravity(Gravity.CENTER);
         big.setPadding(0, dp(20), 0, dp(20));
         page.addView(big);
@@ -406,9 +648,14 @@ public class LearnActivity extends Activity {
         int best = prefs.getInt("best_" + lessonIdx, -1);
         if (score > best) prefs.edit().putInt("best_" + lessonIdx, score).apply();
         page.addView(title("Score: " + score + " / " + total));
-        page.addView(text(score >= 8 ? "Great - you've got these letters. On to the next lesson!"
-                : "Keep practicing: try the flashcards again, then retake the quiz.", 18, Color.WHITE, false));
-        page.addView(button("Retake quiz", BTN, v -> startQuiz(lessonIdx)), full(dp(60)));
+        String good = lessonIdx == -1 ? "Great - your numbers are solid!" : lessonIdx == -2 ? "Great - you know your colors!"
+                : "Great - you've got these letters. On to the next lesson!";
+        page.addView(text(score >= 8 ? good : "Keep practicing, then retake the quiz.", 18, Color.WHITE, false));
+        page.addView(button("Retake quiz", BTN, v -> {
+            if (lessonIdx == -1) startNumberQuiz();
+            else if (lessonIdx == -2) startColorQuiz();
+            else startQuiz(lessonIdx);
+        }), full(dp(60)));
         page.addView(button("Back to lessons", ACCENT, v -> showHome()), full(dp(60)));
     }
 

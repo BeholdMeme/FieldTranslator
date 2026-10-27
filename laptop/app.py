@@ -185,6 +185,10 @@ def selftest(wav=None):
         if len(learn.get("phrases", [])) < 50 or len(learn.get("verses", [])) < 15 or len(learn.get("military", [])) < 25:
             ok = False
         import learn_ui  # noqa: F401  (checks the Learn window is bundled)
+        from ru_numbers import to_words
+        out.append("numbers: 2025 -> " + to_words(2025))
+        if to_words(2025) != "две тысячи двадцать пять" or "numbers" not in learn or "colors" not in learn:
+            ok = False
         from speaker import Speaker
         spk = Speaker(os.path.join(models, "tts", "ru"))
         samples, rate = spk.synth("Привет, как дела?")

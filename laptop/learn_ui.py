@@ -15,6 +15,7 @@ class LearnWindow:
         with open(os.path.join(models_dir, "learn", "learn.json"), encoding="utf-8") as f:
             self.data = json.load(f)
         self.settings = settings
+        self.models_dir = models_dir
         self.save_settings = save_settings
         self.settings.setdefault("best", {})
         self.win = tk.Toplevel(root)
@@ -102,6 +103,11 @@ class LearnWindow:
             status = "not started" if best is None else "best quiz score %d/10%s" % (best, "  ✓" if best >= 8 else "")
             self.button("%d. %s\n%s   ·   %s" % (i + 1, les["title"], " ".join(les["letters"]), status),
                         lambda i=i: self.lesson(i), GOOD if (best or 0) >= 8 else BTN)
+        self.label("Numbers & colors", 15, bold=True)
+        if self.data.get("numbers"):
+            self.button("Numbers   ·   say any number", self.numbers)
+        if self.data.get("colors"):
+            self.button("Colors   ·   %d" % len(self.data["colors"]["items"]), self.colors)
         self.label("Phrases & verses", 15, bold=True)
         if self.data.get("phrases"):
             self.button("Common phrases   ·   %d" % len(self.data["phrases"]), lambda: self.item_list("phrases"))
@@ -245,15 +251,171 @@ class LearnWindow:
         self.rnd.shuffle(out)
         return out
 
+    # ---------- numbers ----------
+    def pron(self, text):
+        if not hasattr(self, "_sd"):
+            from pronounce import StressDict
+            path = os.path.join(self.models_dir, "learn", "stress.tsv")
+            self._sd = StressDict(path) if os.path.isfile(path) else StressDict()
+        from pronounce import pronounce
+        return pronounce(text, self._sd)
+
+    def numbers(self):
+        from ru_numbers import to_words
+        nums = self.data["numbers"]
+        self.clear()
+        self.button("←  Back", self.home)
+        self.label("Numbers", 20, bold=True)
+        box = tk.Frame(self.page, bg="#15233A")
+        box.pack(fill="x", padx=16, pady=6)
+        tk.Label(box, text="Say any number", bg="#15233A", fg="#9CC3FF", font=(FONT, 11, "bold"),
+                 anchor="w").pack(fill="x", padx=12, pady=(10, 2))
+        var = tk.StringVar()
+        ent = tk.Entry(box, textvariable=var, font=(FONT, 20), bg="#0E1116", fg="white", insertbackground="white",
+                       relief="flat")
+        ent.pack(fill="x", padx=12, pady=4, ipady=4)
+        words = tk.Label(box, text="Type a number, e.g. 2025", bg="#15233A", fg=MUTED, font=(FONT, 16, "bold"),
+                         anchor="w", justify="left", wraplength=660)
+        words.pack(fill="x", padx=12)
+        pr = tk.Label(box, text="", bg="#15233A", fg=GOLD, font=(FONT, 13), anchor="w", justify="left", wraplength=660)
+        pr.pack(fill="x", padx=12, pady=(0, 6))
+        cur = {"w": ""}
+
+        def update(*_):
+            t = var.get().replace(",", "").replace(" ", "").strip()
+            if not t:
+                words.configure(text="Type a number, e.g. 2025", fg=MUTED)
+                pr.configure(text="")
+                cur["w"] = ""
+                return
+            try:
+                w = to_words(int(t))
+                cur["w"] = w
+                words.configure(text=w, fg="white")
+                pr.configure(text=self.pron(w))
+            except Exception:
+                words.configure(text="Whole numbers up to 999,999,999,999", fg=MUTED)
+                pr.configure(text="")
+                cur["w"] = ""
+        var.trace_add("write", update)
+        if self.voice:
+            self.hear_btn = tk.Button(box, text="▶  Hear it", command=lambda: self.voice.say(cur["w"]), bg="#1B2A45",
+                                      fg="#9CC3FF", bd=0, font=(FONT, 12, "bold"), cursor="hand2",
+                                      activebackground="#24385C", activeforeground="#9CC3FF")
+            self.hear_btn.pack(fill="x", padx=12, pady=(0, 10), ipady=4)
+        ent.focus_set()
+        self.button("Take the numbers quiz (10 questions)", self.number_quiz, GOOD)
+        for grp in nums["groups"]:
+            self.label(grp["title"], 15, bold=True)
+            self.label(grp["note"], 11, MUTED)
+            for it in grp["items"]:
+                f = tk.Frame(self.page, bg=CARD, cursor="hand2")
+                f.pack(fill="x", padx=16, pady=3)
+                d = tk.Label(f, text=it["digits"], bg=CARD, fg=ACCENT, font=(FONT, 16, "bold"), width=13, anchor="w")
+                d.pack(side="left", padx=(12, 6), pady=6)
+                col = tk.Frame(f, bg=CARD)
+                col.pack(side="left", fill="x", expand=True)
+                a = tk.Label(col, text=it["ru"], bg=CARD, fg="white", font=(FONT, 13), anchor="w", justify="left",
+                             wraplength=420)
+                a.pack(fill="x")
+                b = tk.Label(col, text=it["pron"], bg=CARD, fg=GOLD, font=(FONT, 11), anchor="w", justify="left",
+                             wraplength=420)
+                b.pack(fill="x", pady=(0, 4))
+                if self.voice:
+                    for wdg in (f, d, col, a, b):
+                        wdg.bind("<Button-1>", lambda e, r=it["ru"]: self.voice.say(r))
+        self.label("How it works", 15, bold=True)
+        for t in nums.get("tips", []):
+            self.label("• " + t, 12)
+
+    def number_quiz(self):
+        from ru_numbers import format_digits, to_words
+
+        def rnum():
+            r = self.rnd.randrange(10)
+            if r < 3:
+                return self.rnd.randrange(20)
+            if r < 5:
+                return 20 + self.rnd.randrange(80)
+            if r < 7:
+                return 100 + self.rnd.randrange(900)
+            if r < 9:
+                return 1000 + self.rnd.randrange(99000)
+            return 100000 + self.rnd.randrange(9900000)
+        qs = []
+        for n in range(10):
+            num = rnum()
+            opts = [num]
+            while len(opts) < 4:
+                d = rnum() if self.rnd.randrange(3) == 0 else max(
+                    0, num + self.rnd.choice((-1, 1)) * (1 + self.rnd.randrange(max(3, min(num // 3 + 3, 5000)))))
+                if d not in opts:
+                    opts.append(d)
+            self.rnd.shuffle(opts)
+            if n % 2 == 0:
+                qs.append(("How do you say this number?", format_digits(num), to_words(num), [to_words(o) for o in opts]))
+            else:
+                qs.append(("Which number is this?", to_words(num), format_digits(num), [format_digits(o) for o in opts]))
+        self.question("numbers", qs, 0, 0)
+
+    # ---------- colors ----------
+    def colors(self):
+        cols = self.data["colors"]
+        self.clear()
+        self.button("←  Back", self.home)
+        self.label("Colors", 20, bold=True)
+        self.label("Click a color to hear it.", 11, MUTED)
+        for c in cols["items"]:
+            f = tk.Frame(self.page, bg=CARD, cursor="hand2")
+            f.pack(fill="x", padx=16, pady=3)
+            sw = tk.Canvas(f, width=36, height=36, bg=CARD, highlightthickness=0)
+            sw.create_oval(2, 2, 34, 34, fill=c["hex"], outline="#555555")
+            sw.pack(side="left", padx=12, pady=8)
+            a = tk.Label(f, text=c["ru"], bg=CARD, fg="white", font=(FONT, 15, "bold"), anchor="w")
+            a.pack(side="left")
+            b = tk.Label(f, text="   %s   ·   %s" % (c["pron"], c["en"]), bg=CARD, fg=GOLD, font=(FONT, 11), anchor="w")
+            b.pack(side="left", fill="x", expand=True)
+            if self.voice:
+                for wdg in (f, sw, a, b):
+                    wdg.bind("<Button-1>", lambda e, r=c["ru"]: self.voice.say(r))
+        self.button("Take the colors quiz (10 questions)", self.color_quiz, GOOD)
+        self.label("Good to know", 15, bold=True)
+        for t in cols.get("tips", []):
+            self.label("• " + t, 12)
+        self.label("Examples", 15, bold=True)
+        for it in cols.get("examples", []):
+            f = tk.Frame(self.page, bg=CARD)
+            f.pack(fill="x", padx=16, pady=3)
+            for txt_, col, size in ((it["ru"], "white", 14), (it["pron"], GOLD, 11), (it["en"], MUTED, 11)):
+                tk.Label(f, text=txt_, bg=CARD, fg=col, font=(FONT, size), anchor="w").pack(fill="x", padx=12, pady=1)
+
+    def color_quiz(self):
+        items = self.data["colors"]["items"]
+        qs = []
+        for n in range(10):
+            c = self.rnd.choice(items)
+            if n % 2 == 0:
+                qs.append(("What color is this word?", c["ru"], c["en"], self.choices(c["en"], [x["en"] for x in items])))
+            else:
+                qs.append(("How do you say this color in Russian?", ("swatch", c["hex"]), c["ru"],
+                           self.choices(c["ru"], [x["ru"] for x in items])))
+        self.question("colors", qs, 0, 0)
+
     def question(self, i, qs, n, score):
         if n >= len(qs):
             return self.result(i, score, len(qs))
         prompt, big, answer, choices = qs[n]
         self.clear()
-        self.button("←  Back", lambda: self.lesson(i))
+        back = {"numbers": self.numbers, "colors": self.colors}.get(i) or (lambda: self.lesson(i))
+        self.button("←  Back", back)
         self.label("Question %d of %d   ·   score %d" % (n + 1, len(qs), score), 11, MUTED)
         self.label(prompt, 14)
-        self.label(big, 40, bold=True, center=True)
+        if isinstance(big, tuple):
+            sw = tk.Canvas(self.page, width=120, height=120, bg=BG, highlightthickness=0)
+            sw.create_oval(4, 4, 116, 116, fill=big[1], outline="#555555")
+            sw.pack(pady=10)
+        else:
+            self.label(big, 40 if len(big) <= 14 else 22, bold=True, center=True)
         fb = self.label("", 14, bold=True)
         btns = []
 
@@ -281,7 +443,9 @@ class LearnWindow:
             self.save_settings()
         self.clear()
         self.label("Score: %d / %d" % (score, total), 22, bold=True)
-        self.label("Great - you've got these letters. On to the next lesson!" if score >= 8
-                   else "Keep practicing: try the flashcards again, then retake the quiz.", 14)
-        self.button("Retake quiz", lambda: self.start_quiz(i))
+        good = {"numbers": "Great - your numbers are solid!", "colors": "Great - you know your colors!"}.get(
+            i, "Great - you've got these letters. On to the next lesson!")
+        self.label(good if score >= 8 else "Keep practicing, then retake the quiz.", 14)
+        again = {"numbers": self.number_quiz, "colors": self.color_quiz}.get(i) or (lambda: self.start_quiz(i))
+        self.button("Retake quiz", again)
         self.button("Back to lessons", self.home, ACCENT)
