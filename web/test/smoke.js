@@ -103,7 +103,14 @@ async function main() {
   if (words !== 'двадцать тысяч') fail('say-any-number: ' + words);
   await page.fill('.saynum input', '1000000');
   if ((await page.textContent('.saynum .w')) !== 'миллион') fail('million: ' + await page.textContent('.saynum .w'));
+  await page.click('button:has-text("5th")');
+  await page.fill('.saynum input', '2000');
+  const ord = await page.$$eval('.saynum .sayline .w', e => e.map(x => x.textContent));
+  if (ord.join('|') !== 'двухтысячный|двухтысячная|двухтысячное') fail('ordinal 2000th: ' + ord.join('|'));
+  await page.fill('.saynum input', '23');
+  if ((await page.textContent('.saynum .sayline .w')) !== 'двадцать третий') fail('ordinal 23rd');
   await page.screenshot({ path: `shot-${engine}-numbers.png`, fullPage: false });
+  await page.click('button:has-text("5   (five)")');
   await page.click('button:has-text("numbers quiz")');
   await page.click('.learn .btn >> nth=1');
   await page.waitForSelector('.feedback:not(:empty)');
