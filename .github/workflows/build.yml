@@ -184,7 +184,7 @@ jobs:
   web:
     # iPhone / any-browser version, published on GitHub Pages
     needs: android
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
@@ -212,9 +212,9 @@ jobs:
           name: refs
           path: build/ref
 
-      - name: Cache speech engine (WebAssembly)
+      - name: Cached speech engine (WebAssembly)
         id: wasmcache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: sherpa-wasm
           key: sherpa-wasm-web-1.13.8-v1
@@ -238,12 +238,20 @@ jobs:
           cp wasm/asr/sherpa-onnx-asr.js wasm/tts/sherpa-onnx-tts.js $GITHUB_WORKSPACE/sherpa-wasm/
           ls -la $GITHUB_WORKSPACE/sherpa-wasm
 
+      - name: Save speech engine
+        if: steps.wasmcache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: sherpa-wasm
+          key: sherpa-wasm-web-1.13.8-v1
+
       - name: Test tools
         working-directory: web/test
         run: |
-          npm install --no-audit --no-fund
-          npx playwright install --with-deps chromium webkit
-          pip install pillow==11.0.0
+          run() { "$@" > step.log 2>&1 || { tail -30 step.log | sed 's/^/::error::/'; exit 1; }; }
+          run npm install --no-audit --no-fund
+          run npx playwright install --with-deps chromium webkit
+          run pip install pillow==11.0.0
 
       - name: Check the web code gives identical results (JavaScript)
         run: |
