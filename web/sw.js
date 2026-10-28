@@ -9,7 +9,7 @@ const SHELL = 'ft-shell-' + VERSION;
 const MODELS = 'ft-models-v1';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
-  'js/app.js', 'js/core.js', 'js/store.js', 'js/speech-worker.js', 'js/tts-worker.js', 'js/mt-worker.js', 'js/mic-worklet.js',
+  'js/app.js', 'js/core.js', 'js/store.js', 'js/speech-worker.js', 'js/tts-worker.js', 'js/mt-worker.js',
   'vendor/sherpa-onnx-wasm-web.js', 'vendor/sherpa-onnx-wasm-web.wasm',
   'vendor/sherpa-onnx-asr.js', 'vendor/sherpa-onnx-tts.js',
   'vendor/ort.wasm.min.js', 'vendor/ort-wasm-simd-threaded.mjs', 'vendor/ort-wasm-simd-threaded.wasm',

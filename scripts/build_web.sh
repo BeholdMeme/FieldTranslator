@@ -60,6 +60,6 @@ rm -rf "$CACHE/en-x"
 
 # the service worker refreshes the app shell when this changes
 VER="$(date -u +%Y%m%d%H%M)-$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo dev)"
-sed -i "s/__BUILD_VERSION__/$VER/" "$OUT/sw.js"
+sed -i "s/__BUILD_VERSION__/$VER/" "$OUT/sw.js" "$OUT/js/app.js"
 touch "$OUT/.nojekyll"
 echo "web app built: $(du -sh "$OUT" | cut -f1) ($VER)"

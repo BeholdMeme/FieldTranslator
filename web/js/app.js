@@ -33,6 +33,7 @@
   const rnd = n => Math.floor(Math.random() * n);
   function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = rnd(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
+  const APP_VERSION = '__BUILD_VERSION__';
   const BASE = new URL('models/', location.href).href;   // absolute: workers live in js/
   let manifest = null, learn = null, pronouncer = null;
 
@@ -127,17 +128,52 @@
   function audioSession(type) {
     try { if (navigator.audioSession) navigator.audioSession.type = type; } catch (e) { /* not supported */ }
   }
+  // The voice plays through a normal <audio> element (like music): on iPhone that goes to the
+  // loudspeaker and keeps working in silent mode. Web Audio is only a fallback.
+  function wavBlob(samples, rate) {
+    const n = samples.length, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    const str = (o, t) => { for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
+    str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVE'); str(12, 'fmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+    str(36, 'data'); v.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) { const x = Math.max(-1, Math.min(1, samples[i])); v.setInt16(44 + i * 2, x < 0 ? x * 32768 : x * 32767, true); }
+    return new Blob([buf], { type: 'audio/wav' });
+  }
+  const player = new Audio();
+  player.preload = 'auto';
+  player.setAttribute('playsinline', '');
+  const SILENCE = URL.createObjectURL(wavBlob(new Float32Array(2205), 22050));
+  let playerUrl = null;
+  function unlockPlayer() {           // must run inside the tap so later play() calls are allowed
+    try {
+      if (playerUrl) { URL.revokeObjectURL(playerUrl); playerUrl = null; }
+      player.src = SILENCE;
+      const p = player.play();
+      if (p && p.catch) p.catch(() => {});
+    } catch (e) { /* ignore */ }
+  }
   let speakSeq = 0, currentSource = null;
   async function say(text) {
     if (!text || !text.trim()) return;
     const mine = ++speakSeq;
     if (!state.listening) audioSession('playback');
-    const c = playCtx();                 // created/resumed inside the tap - required on iPhone
+    unlockPlayer();
+    let c = null;
+    try { c = playCtx(); } catch (e) { c = null; }   // fallback path, also unlocked by this tap
     try {
       const speak = () => ttsWorker().call({ cmd: 'speak', text, base: BASE, pack: manifest.packs['tts-ru'] });
       let r;
       try { r = await speak(); } catch (e) { if (!tts || !tts.dead) throw e; r = await speak(); }   // restarted engine
       if (mine !== speakSeq) return;
+      try {
+        playerUrl = URL.createObjectURL(wavBlob(r.samples, r.rate));
+        player.src = playerUrl;
+        await player.play();
+        return;
+      } catch (e) {
+        if (!c) throw e;                // no fallback available
+      }
       if (c.state !== 'running') { try { await c.resume(); } catch (e) { /* ignore */ } }
       const buf = c.createBuffer(1, r.samples.length, r.rate);
       buf.copyToChannel(r.samples, 0);
@@ -148,14 +184,14 @@
       src.start();
       currentSource = src;
     } catch (e) {
-      toast('Voice unavailable: ' + e.message);
+      toast('Voice unavailable: ' + (e && e.message || e), 8000);
     }
   }
-  function toast(msg) {
+  function toast(msg, ms) {
     const t = h('div', { style: 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#20252E;' +
       'border:1px solid #2A303A;padding:10px 16px;border-radius:14px;z-index:9;max-width:90%;text-align:center' }, msg);
     document.body.append(t);
-    setTimeout(() => t.remove(), 3500);
+    setTimeout(() => t.remove(), ms || 3500);
   }
 
   // ------------------------------------------------------------------ start-up
@@ -272,16 +308,17 @@
     for (const e of entries) convo.append(e.el);
     const partial = h('div', { class: 'partial hidden' }), preview = h('div', { class: 'preview hidden' });
     const status = h('div', { class: 'status' }, '');
+    const diag = h('div', { class: 'diag hidden' }, '');
     const levelI = h('i');
     const pronBtn = h('button', { class: 'w2', onclick: togglePron });
     const listen = h('button', { class: 'listen', onclick: () => (state.listening ? stopListening() : startListening()) }, 'Loading…');
-    ui = { segRu, segEn, convo, empty, partial, preview, status, levelI, pronBtn, listen };
+    ui = { segRu, segEn, convo, empty, partial, preview, status, diag, levelI, pronBtn, listen };
     render(
       h('div', { class: 'header' }, h('h1', {}, 'Field Translator'), h('span', { class: 'chip-offline' }, '● Offline')),
       h('div', { class: 'seg' }, segRu, segEn),
       convo,
       h('div', { class: 'live' }, partial, preview),
-      h('div', { class: 'panel' }, status, h('div', { class: 'level' }, levelI),
+      h('div', { class: 'panel' }, status, diag, h('div', { class: 'level' }, levelI),
         h('div', { class: 'chips' }, pronBtn,
           h('button', { onclick: () => { if (state.listening) stopListening(); showLearnHome(); } }, 'Learn'),
           h('button', { onclick: () => setScale(state.scale / 1.15) }, 'A−'),
@@ -340,6 +377,43 @@
 
   // --- microphone
   let mic = null;
+  // Mic samples -> onChunk(Float32Array ~100 ms). AudioWorklet loaded from code inside this file
+  // (no separate download, nothing for the offline cache to get wrong); ScriptProcessor as fallback.
+  const WORKLET = `class MicTap extends AudioWorkletProcessor {
+    constructor() { super(); this.buf = new Float32Array(Math.round(sampleRate / 10)); this.n = 0; }
+    process(inputs) {
+      const ch = inputs[0] && inputs[0][0];
+      if (ch) for (let i = 0; i < ch.length; i++) {
+        this.buf[this.n++] = ch[i];
+        if (this.n === this.buf.length) { this.port.postMessage(this.buf.slice(0)); this.n = 0; }
+      }
+      return true;
+    }
+  }
+  registerProcessor('mic-tap', MicTap);`;
+  const workletLoaded = new WeakSet();
+  async function micTap(c, source, sink, onChunk) {
+    if (c.audioWorklet && window.AudioWorkletNode) {
+      try {
+        if (!workletLoaded.has(c)) {
+          const url = URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' }));
+          try { await Promise.race([c.audioWorklet.addModule(url), sleep(4000).then(() => { throw new Error('worklet timeout'); })]); }
+          finally { URL.revokeObjectURL(url); }
+          workletLoaded.add(c);
+        }
+        const node = new AudioWorkletNode(c, 'mic-tap');
+        node.port.onmessage = e => onChunk(e.data);
+        source.connect(node); node.connect(sink);
+        return node;
+      } catch (e) { /* fall through to the older method */ }
+    }
+    const size = 4096;
+    const node = c.createScriptProcessor(size, 1, 1);
+    node.onaudioprocess = e => onChunk(new Float32Array(e.inputBuffer.getChannelData(0)));
+    source.connect(node); node.connect(sink);
+    return node;
+  }
+
   async function startListening() {
     if (!state.ready || state.listening) return;
     const lang = DIRS[state.pair].lang;
@@ -354,28 +428,25 @@
     // an engine started right now, inside the tap, is always allowed to run on iPhone: keep it as a backup
     let backup = null;
     try { backup = new AC(); backup.resume(); } catch (e) { backup = null; }
-    let c = null;
+    let c = null, stream = null;
     try {
       // iPhone: open the mic first, then create the audio engine, so the engine runs at the mic's
       // current sample rate (an engine made earlier can receive pure silence from the mic)
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
       c = new AC();
-      if (!c.audioWorklet) throw new Error('this browser is too old for live audio');
       if (c.state !== 'running') {
         try { await Promise.race([c.resume(), sleep(1500)]); } catch (e) { /* checked below */ }
       }
       if (c.state !== 'running' && backup && backup.state === 'running') { try { c.close(); } catch (e) { /* ignore */ } c = backup; backup = null; }
       if (backup) { try { backup.close(); } catch (e) { /* ignore */ } backup = null; }
-      await c.audioWorklet.addModule('js/mic-worklet.js');
       const source = c.createMediaStreamSource(stream);
-      const node = new AudioWorkletNode(c, 'mic-tap');
       const sink = c.createGain();
       sink.gain.value = 0;                      // keep the graph running without playing the mic back
-      source.connect(node); node.connect(sink); sink.connect(c.destination);
-      mic = { ctx: c, stream, source, node, sink, started: Date.now(), peak: 0, warned: false, pair: state.pair };
+      sink.connect(c.destination);
+      mic = { ctx: c, stream, source, sink, node: null, started: Date.now(), peak: 0, warned: false, pair: state.pair, chunks: 0 };
       speechWorker().send({ cmd: 'start' });
-      node.port.onmessage = e => {
-        const samples = e.data;
+      const rate = c.sampleRate;
+      const onChunk = samples => {
         mic.chunks++;
         let p = 0;
         for (let i = 0; i < samples.length; i++) { const a = Math.abs(samples[i]); if (a > p) p = a; }
@@ -385,10 +456,19 @@
           mic.warned = true;
           setStatus('The microphone is sending silence. Check the mic permission for this app in Settings.');
         }
-        speechWorker().send({ cmd: 'audio', samples, rate: c.sampleRate }, [samples.buffer]);
+        speechWorker().send({ cmd: 'audio', samples, rate }, [samples.buffer]);
       };
-      mic.chunks = 0;
+      mic.node = await micTap(c, source, sink, onChunk);
       const me = mic;
+      const track = stream.getAudioTracks()[0];
+      me.events = [];
+      if (track) {
+        track.addEventListener('ended', () => onMicLost(me, 'ended'));
+        track.addEventListener('mute', () => { me.events.push('muted'); });
+        track.addEventListener('unmute', () => { me.events.push('unmuted'); });
+      }
+      c.addEventListener('statechange', () => me.events.push('audio ' + c.state));
+      me.diagTimer = setInterval(() => showDiag(me), 500);
       setTimeout(() => {
         if (mic !== me || !state.listening || me.chunks > 0) return;
         // nothing at all arrived: tell the user exactly what the phone reports
@@ -400,19 +480,52 @@
       setStatus('Listening… ' + DIRS[state.pair].hint);
       refresh();
     } catch (e) {
-      setStatus('Microphone error: ' + (e.name === 'NotAllowedError' ? 'permission denied - allow the microphone in Settings' : e.message));
+      setStatus('Microphone error: ' + (e.name === 'NotAllowedError' ? 'permission denied - allow the microphone in Settings' : (e.name || '') + ' ' + e.message));
+      try { if (stream) stream.getTracks().forEach(t => t.stop()); } catch (x) { /* ignore */ }
       try { if (c) c.close(); } catch (x) { /* ignore */ }
       try { if (backup) backup.close(); } catch (x) { /* ignore */ }
       audioSession('playback');
     }
   }
 
+  // live readings shown while listening (helps find phone-specific problems)
+  function showDiag(m) {
+    if (!ui || mic !== m || !state.listening) { if (ui) ui.diag.classList.add('hidden'); clearInterval(m.diagTimer); return; }
+    const tr = m.stream.getAudioTracks()[0];
+    let session = '';
+    try { session = navigator.audioSession ? navigator.audioSession.type : 'n/a'; } catch (e) { session = '?'; }
+    ui.diag.textContent = 'mic ' + (tr ? tr.readyState + (tr.muted ? ' (muted)' : '') : 'none') +
+      ' · audio ' + m.ctx.state + ' ' + m.ctx.sampleRate + ' Hz · ' + (m.node && m.node.port ? 'worklet' : 'processor') +
+      ' · chunks ' + m.chunks + ' · peak ' + m.peak.toFixed(3) + ' · session ' + session +
+      (m.events.length ? ' · ' + m.events.slice(-3).join(', ') : '') + ' · v' + APP_VERSION;
+    ui.diag.classList.remove('hidden');
+  }
+
+  async function onMicLost(m, why) {
+    if (mic !== m || !state.listening) return;
+    m.events.push('mic ' + why);
+    // iPhone switched the mic off by itself: restart it once automatically
+    if (!m.restarted) {
+      m.restarted = true;
+      setStatus('iPhone turned the microphone off - restarting it…');
+      await stopListening();
+      mic && (mic.restarted = true);
+      await startListening();
+      if (mic) mic.restarted = true;
+    } else {
+      await stopListening();
+      setStatus('iPhone keeps turning the microphone off (' + why + '). Tap Listen to try again.');
+    }
+  }
+
   async function stopListening() {
     if (!state.listening || !mic) return;
     state.listening = false;
+    clearInterval(mic.diagTimer);
+    if (ui) ui.diag.classList.add('hidden');
     try {
-      mic.node.port.onmessage = null;
-      mic.source.disconnect(); mic.node.disconnect(); mic.sink.disconnect();
+      if (mic.node) { if (mic.node.port) mic.node.port.onmessage = null; else mic.node.onaudioprocess = null; mic.node.disconnect(); }
+      mic.source.disconnect(); mic.sink.disconnect();
       mic.stream.getTracks().forEach(t => t.stop());
     } catch (e) { /* already stopped */ }
     const rate = mic.ctx.sampleRate;
@@ -558,7 +671,8 @@
       listBtn('phrases', 'Common phrases'), listBtn('verses', 'Bible verses'), listBtn('military', 'Military phrases'),
       h('h3', {}, 'Pronunciation tips'),
       learn.tips.map(t => h('div', { style: 'margin:6px 0' }, '• ' + t)),
-      h('div', { class: 'muted small', style: 'margin-top:14px' }, learn.source));
+      h('div', { class: 'muted small', style: 'margin-top:14px' }, learn.source),
+      h('div', { class: 'muted small', style: 'margin-top:6px' }, 'App version ' + APP_VERSION));
   }
 
   function showLetter(i) {
