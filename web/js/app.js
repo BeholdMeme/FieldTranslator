@@ -78,15 +78,23 @@
   }
 
   // ------------------------------------------------------------------ audio out (read aloud)
-  let audioCtx = null;
-  function ctx() {
-    if (!audioCtx) {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      audioCtx = new AC();
+  // Playback and microphone use separate audio contexts. On iPhone, a context that has been used
+  // with the mic stays routed to the quiet earpiece (and goes 'interrupted' after the app is
+  // backgrounded), so the voice gets a fresh context whenever the old one may be stuck.
+  const AC = window.AudioContext || window.webkitAudioContext;
+  let outCtx = null, outStale = false;
+  function playCtx() {
+    if (outCtx && (outStale || outCtx.state === 'closed' || outCtx.state === 'interrupted')) {
+      try { outCtx.close(); } catch (e) { /* already closed */ }
+      outCtx = null;
     }
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-    return audioCtx;
+    outStale = false;
+    if (!outCtx) outCtx = new AC();
+    if (outCtx.state !== 'running') { try { outCtx.resume(); } catch (e) { /* ignore */ } }
+    return outCtx;
   }
+  document.addEventListener('visibilitychange', () => { if (document.hidden) outStale = true; });
+  window.addEventListener('pageshow', () => { outStale = true; });
   function audioSession(type) {
     try { if (navigator.audioSession) navigator.audioSession.type = type; } catch (e) { /* not supported */ }
   }
@@ -94,11 +102,12 @@
   async function say(text) {
     if (!text || !text.trim()) return;
     const mine = ++speakSeq;
-    const c = ctx();                     // must be created inside the tap on iPhone
     if (!state.listening) audioSession('playback');
+    const c = playCtx();                 // created/resumed inside the tap - required on iPhone
     try {
       const r = await speechWorker().call({ cmd: 'speak', text, base: BASE, pack: manifest.packs['tts-ru'] });
       if (mine !== speakSeq) return;
+      if (c.state !== 'running') { try { await c.resume(); } catch (e) { /* ignore */ } }
       const buf = c.createBuffer(1, r.samples.length, r.rate);
       buf.copyToChannel(r.samples, 0);
       if (currentSource) { try { currentSource.stop(); } catch (e) { /* ended */ } }
@@ -297,18 +306,19 @@
   let mic = null;
   async function startListening() {
     if (!state.ready || state.listening) return;
-    const c = ctx();
     audioSession('play-and-record');
+    const c = new AC();
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
       if (!c.audioWorklet) throw new Error('this browser is too old for live audio');
-      if (!mic || !mic.workletLoaded) { await c.audioWorklet.addModule('js/mic-worklet.js'); }
+      if (c.state !== 'running') await c.resume();
+      await c.audioWorklet.addModule('js/mic-worklet.js');
       const source = c.createMediaStreamSource(stream);
       const node = new AudioWorkletNode(c, 'mic-tap');
       const sink = c.createGain();
       sink.gain.value = 0;                      // keep the graph running without playing the mic back
       source.connect(node); node.connect(sink); sink.connect(c.destination);
-      mic = { stream, source, node, sink, workletLoaded: true, started: Date.now(), peak: 0, warned: false, pair: state.pair };
+      mic = { ctx: c, stream, source, node, sink, started: Date.now(), peak: 0, warned: false, pair: state.pair };
       speechWorker().send({ cmd: 'start' });
       node.port.onmessage = e => {
         const samples = e.data;
@@ -327,6 +337,7 @@
       refresh();
     } catch (e) {
       setStatus('Microphone error: ' + (e.name === 'NotAllowedError' ? 'permission denied - allow the microphone in Settings' : e.message));
+      try { c.close(); } catch (x) { /* ignore */ }
       audioSession('playback');
     }
   }
@@ -339,9 +350,11 @@
       mic.source.disconnect(); mic.node.disconnect(); mic.sink.disconnect();
       mic.stream.getTracks().forEach(t => t.stop());
     } catch (e) { /* already stopped */ }
-    const rate = audioCtx ? audioCtx.sampleRate : 48000;
-    await speechWorker().call({ cmd: 'finish', rate });   // the last phrase arrives before this resolves
+    const rate = mic.ctx.sampleRate;
+    try { mic.ctx.close(); } catch (e) { /* ignore */ }
     audioSession('playback');
+    outStale = true;                     // next voice playback gets a context routed to the speaker
+    await speechWorker().call({ cmd: 'finish', rate });   // the last phrase arrives before this resolves
     if (ui) { ui.levelI.style.width = '0'; setStatus('Stopped. Tap Listen to continue.'); }
     refresh();
   }
