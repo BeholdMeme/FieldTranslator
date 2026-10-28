@@ -51,30 +51,59 @@
         onEvent && onEvent(m);
       } else onEvent && onEvent(m);
     };
+    const api = { dead: false };
     w.onerror = e => {
       const msg = e.message || 'worker failed to start';
+      api.dead = true;
       // a crashed worker never answers: fail everything that was waiting instead of hanging
       for (const { reject } of waiting.values()) reject(new Error(msg));
       waiting.clear();
       onEvent && onEvent({ type: 'error', message: msg });
     };
-    return {
-      call(msg, transfer) {
-        const id = ++seq;
-        return new Promise((resolve, reject) => { waiting.set(id, { resolve, reject }); w.postMessage({ ...msg, id }, transfer || []); });
-      },
-      send(msg, transfer) { w.postMessage(msg, transfer || []); },
+    api.call = (msg, transfer) => {
+      const id = ++seq;
+      return new Promise((resolve, reject) => { waiting.set(id, { resolve, reject }); w.postMessage({ ...msg, id }, transfer || []); });
     };
+    api.send = (msg, transfer) => w.postMessage(msg, transfer || []);
+    api.terminate = () => {
+      api.dead = true;
+      try { w.terminate(); } catch (e) { /* ignore */ }
+      for (const { reject } of waiting.values()) reject(new Error('stopped'));
+      waiting.clear();
+    };
+    return api;
   }
 
-  let speech = null, mt = null;
+  // Three workers, each with its own memory: speech recognition, translation, and the voice.
+  // iPhones kill a page's worker when memory runs short; a dead worker is simply recreated.
+  let speech = null, mt = null, tts = null, speechLang = null;
   function speechWorker() {
-    if (!speech) speech = makeWorker('js/speech-worker.js', onSpeechEvent);
+    if (!speech || speech.dead) { speech = makeWorker('js/speech-worker.js', onSpeechEvent); speechLang = null; }
     return speech;
   }
+  async function speechFor(lang) {
+    // a fresh worker per language: the old model's memory is returned to the phone, not reused
+    if (speech && !speech.dead && speechLang && speechLang !== lang) { speech.terminate(); speech = null; }
+    const w = speechWorker();
+    await w.call({ cmd: 'loadAsr', lang, base: BASE, pack: manifest.packs['asr-' + lang] });
+    speechLang = lang;
+    return w;
+  }
+  let mtPair = null;
+  async function mtFor(pair) {
+    // a fresh worker per direction so the other direction's memory is really given back
+    if (mt && !mt.dead && mtPair && mtPair !== pair) { mt.terminate(); mt = null; }
+    if (!mt || mt.dead) mtPair = null;
+    await mtWorker().call({ cmd: 'load', pair, base: BASE, pack: manifest.packs['mt-' + pair] });
+    mtPair = pair;
+  }
   function mtWorker() {
-    if (!mt) mt = makeWorker('js/mt-worker.js', e => { if (e.type === 'error') setStatus('Translation error: ' + e.message); });
+    if (!mt || mt.dead) mt = makeWorker('js/mt-worker.js', e => { if (e.type === 'error') setStatus('Translation error: ' + e.message); });
     return mt;
+  }
+  function ttsWorker() {
+    if (!tts || tts.dead) tts = makeWorker('js/tts-worker.js', null);
+    return tts;
   }
 
   // ------------------------------------------------------------------ audio out (read aloud)
@@ -105,7 +134,9 @@
     if (!state.listening) audioSession('playback');
     const c = playCtx();                 // created/resumed inside the tap - required on iPhone
     try {
-      const r = await speechWorker().call({ cmd: 'speak', text, base: BASE, pack: manifest.packs['tts-ru'] });
+      const speak = () => ttsWorker().call({ cmd: 'speak', text, base: BASE, pack: manifest.packs['tts-ru'] });
+      let r;
+      try { r = await speak(); } catch (e) { if (!tts || !tts.dead) throw e; r = await speak(); }   // restarted engine
       if (mine !== speakSeq) return;
       if (c.state !== 'running') { try { await c.resume(); } catch (e) { /* ignore */ } }
       const buf = c.createBuffer(1, r.samples.length, r.rate);
@@ -130,6 +161,11 @@
   // ------------------------------------------------------------------ start-up
   async function boot() {
     if ('serviceWorker' in navigator) {
+      // when an update arrives, switch to it right away (unless the mic is in use)
+      const hadController = !!navigator.serviceWorker.controller;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (hadController && !state.listening) location.reload();
+      });
       try { await navigator.serviceWorker.register('sw.js'); } catch (e) { /* file:// or blocked */ }
     }
     try {
@@ -278,8 +314,8 @@
     const d = DIRS[pair];
     try {
       await Promise.all([
-        speechWorker().call({ cmd: 'loadAsr', lang: d.lang, base: BASE, pack: manifest.packs[d.asr] }),
-        mtWorker().call({ cmd: 'load', pair, base: BASE, pack: manifest.packs[d.mt] }),
+        speechFor(d.lang),
+        mtFor(pair),
       ]);
       if (state.loadingFor !== pair) return;      // switched again meanwhile
       state.ready = true;
@@ -306,12 +342,30 @@
   let mic = null;
   async function startListening() {
     if (!state.ready || state.listening) return;
+    const lang = DIRS[state.pair].lang;
+    if (!speech || speech.dead || speechLang !== lang) {      // engine was shut down by the phone: bring it back
+      state.ready = false; refresh();
+      setStatus('Restarting speech engine…');
+      try { await speechFor(lang); } catch (e) { setStatus('Speech engine failed: ' + e.message); return; }
+      finally { state.ready = true; refresh(); }
+    }
     audioSession('play-and-record');
-    const c = new AC();
+    setStatus('Starting microphone…');
+    // an engine started right now, inside the tap, is always allowed to run on iPhone: keep it as a backup
+    let backup = null;
+    try { backup = new AC(); backup.resume(); } catch (e) { backup = null; }
+    let c = null;
     try {
+      // iPhone: open the mic first, then create the audio engine, so the engine runs at the mic's
+      // current sample rate (an engine made earlier can receive pure silence from the mic)
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      c = new AC();
       if (!c.audioWorklet) throw new Error('this browser is too old for live audio');
-      if (c.state !== 'running') await c.resume();
+      if (c.state !== 'running') {
+        try { await Promise.race([c.resume(), sleep(1500)]); } catch (e) { /* checked below */ }
+      }
+      if (c.state !== 'running' && backup && backup.state === 'running') { try { c.close(); } catch (e) { /* ignore */ } c = backup; backup = null; }
+      if (backup) { try { backup.close(); } catch (e) { /* ignore */ } backup = null; }
       await c.audioWorklet.addModule('js/mic-worklet.js');
       const source = c.createMediaStreamSource(stream);
       const node = new AudioWorkletNode(c, 'mic-tap');
@@ -322,6 +376,7 @@
       speechWorker().send({ cmd: 'start' });
       node.port.onmessage = e => {
         const samples = e.data;
+        mic.chunks++;
         let p = 0;
         for (let i = 0; i < samples.length; i++) { const a = Math.abs(samples[i]); if (a > p) p = a; }
         if (ui) ui.levelI.style.width = Math.min(100, p * 400) + '%';
@@ -332,12 +387,22 @@
         }
         speechWorker().send({ cmd: 'audio', samples, rate: c.sampleRate }, [samples.buffer]);
       };
+      mic.chunks = 0;
+      const me = mic;
+      setTimeout(() => {
+        if (mic !== me || !state.listening || me.chunks > 0) return;
+        // nothing at all arrived: tell the user exactly what the phone reports
+        const tr = me.stream.getAudioTracks()[0];
+        setStatus('No sound is reaching the app (audio ' + me.ctx.state + ', ' + me.ctx.sampleRate + ' Hz, mic ' +
+          (tr ? tr.readyState + (tr.muted ? ' muted' : '') : 'none') + '). Tap Stop, then Listen again.');
+      }, 3000);
       state.listening = true;
       setStatus('Listening… ' + DIRS[state.pair].hint);
       refresh();
     } catch (e) {
       setStatus('Microphone error: ' + (e.name === 'NotAllowedError' ? 'permission denied - allow the microphone in Settings' : e.message));
-      try { c.close(); } catch (x) { /* ignore */ }
+      try { if (c) c.close(); } catch (x) { /* ignore */ }
+      try { if (backup) backup.close(); } catch (x) { /* ignore */ }
       audioSession('playback');
     }
   }
@@ -354,7 +419,7 @@
     try { mic.ctx.close(); } catch (e) { /* ignore */ }
     audioSession('playback');
     outStale = true;                     // next voice playback gets a context routed to the speaker
-    await speechWorker().call({ cmd: 'finish', rate });   // the last phrase arrives before this resolves
+    try { await speech.call({ cmd: 'finish', rate }); } catch (e) { /* engine gone; nothing left to finish */ }
     if (ui) { ui.levelI.style.width = '0'; setStatus('Stopped. Tap Listen to continue.'); }
     refresh();
   }
@@ -368,15 +433,22 @@
     } else if (m.type === 'final') {
       finalText(mic ? mic.pair : state.pair, m.text);
     } else if (m.type === 'error') {
-      setStatus('Speech error: ' + m.message);
+      if (speech && speech.dead) {
+        if (state.listening) stopListening();
+        setStatus('The phone stopped the speech engine (low memory). Tap Listen to restart it.');
+      } else setStatus('Speech error: ' + m.message);
     }
   }
 
   async function translate(pair, text) {
     state.pending++;
     try {
+      if ((!mt || mt.dead || mtPair !== pair) && pair === state.pair) await mtFor(pair);   // restarted by the phone
       const r = await mtWorker().call({ cmd: 'translate', pair, text });
       return r.text;
+    } catch (e) {
+      if (e.message === 'stopped') return null;      // direction switched while translating
+      throw e;
     } finally { state.pending--; }
   }
 
@@ -704,7 +776,7 @@
     await loadLearn();
     out.pron = pronouncer.pronounce('Привет, как дела?');
     out.number = FT.numberToWords(2025);
-    await mtWorker().call({ cmd: 'load', pair: 'ru-en', base: BASE, pack: manifest.packs['mt-ru-en'] });
+    await mtFor('ru-en');
     out.translation = (await mtWorker().call({ cmd: 'translate', pair: 'ru-en', text: 'где находится вокзал' })).text;
     const wav = await (await fetch('test/test.wav')).arrayBuffer();
     const dv = new DataView(wav);
@@ -719,10 +791,11 @@
     const pcm = new Int16Array(wav.slice(start, start + len - (len % 2)));
     const f = new Float32Array(pcm.length);
     for (let i = 0; i < pcm.length; i++) f[i] = pcm[i] / 32768;
+    await speechFor('ru');
     out.transcript = (await speechWorker().call({ cmd: 'transcribe', lang: 'ru', base: BASE, pack: manifest.packs['asr-ru'], samples: f, rate })).text;
-    const sp = await speechWorker().call({ cmd: 'speak', text: 'Привет', base: BASE, pack: manifest.packs['tts-ru'] });
+    const sp = await ttsWorker().call({ cmd: 'speak', text: 'Привет', base: BASE, pack: manifest.packs['tts-ru'] });
     out.voiceSeconds = sp.samples.length / sp.rate;
-    await speechWorker().call({ cmd: 'loadAsr', lang: 'en', base: BASE, pack: manifest.packs['asr-en'] });
+    await speechFor('en');
     out.englishLoaded = true;
     return out;
   };

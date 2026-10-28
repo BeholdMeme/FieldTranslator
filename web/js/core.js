@@ -139,9 +139,11 @@
       if (tr.id2piece.length && tr.id2piece[tr.id2piece.length - 1] === '') tr.id2piece.pop();
       tr.piece2id = new Map();
       tr.id2piece.forEach((pc, i) => { if (!tr.piece2id.has(pc)) tr.piece2id.set(pc, i); });
-      const opts = { executionProviders: ['wasm'], graphOptimizationLevel: 'all' };
-      tr.encoder = await ort.InferenceSession.create(new Uint8Array(files.encoder), opts);
-      tr.decoder = await ort.InferenceSession.create(new Uint8Array(files.decoder), opts);
+      // memory-lean settings (phones): no arena / pre-planned buffers; results are identical
+      const opts = { executionProviders: ['wasm'], graphOptimizationLevel: 'all', enableCpuMemArena: false, enableMemPattern: false };
+      const bytes = b => (b instanceof Uint8Array ? b : new Uint8Array(b));
+      tr.encoder = await ort.InferenceSession.create(bytes(files.encoder), opts);
+      tr.decoder = await ort.InferenceSession.create(bytes(files.decoder), opts);
       return tr;
     }
 
