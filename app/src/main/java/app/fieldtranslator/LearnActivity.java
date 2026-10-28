@@ -193,11 +193,12 @@ public class LearnActivity extends Activity {
         TextView big = text(l.optString("upper") + " " + l.optString("lower"), 72, Color.WHITE, true);
         big.setGravity(Gravity.CENTER);
         page.addView(big);
-        page.addView(speakButton("🔊  Hear it", l.optString("say", l.optString("example"))));
+        page.addView(speakButton("🔊  Hear the letter", l.optString("name_ru", l.optString("lower"))));
         page.addView(card("Name", l.optString("name")));
         page.addView(card("Sound", l.optString("sound")));
         page.addView(card("Example", l.optString("example") + "\n" + l.optString("example_pron")
                 + "\n" + l.optString("example_meaning")));
+        page.addView(speakButton("🔊  Hear the example word", l.optString("example")));
         page.addView(nav);
     }
 

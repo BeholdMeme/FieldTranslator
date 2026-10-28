@@ -67,11 +67,11 @@ class LearnWindow:
         tk.Label(f, text=body, bg=CARD, fg="white", font=(FONT, 15), anchor="w", justify="left",
                  wraplength=660).pack(fill="x", padx=10, pady=(0, 8))
 
-    def hear(self, russian, parent=None):
+    def hear(self, russian, parent=None, label="▶  Hear it"):
         """'▶ Hear it' button that reads Russian aloud."""
         if not self.voice:
             return None
-        b = tk.Button(parent or self.page, text="▶  Hear it", command=lambda: self.voice.say(russian),
+        b = tk.Button(parent or self.page, text=label, command=lambda: self.voice.say(russian),
                       bg="#1B2A45", fg="#9CC3FF", bd=0, activebackground="#24385C", activeforeground="#9CC3FF",
                       font=(FONT, 12, "bold"), cursor="hand2", relief="flat")
         if parent is None:
@@ -130,10 +130,11 @@ class LearnWindow:
         self.win.bind("<Left>", lambda e: self.show_letter(prev_l))
         self.win.bind("<Right>", lambda e: self.show_letter(next_l))
         self.label(l["upper"] + " " + l["lower"], 54, bold=True, center=True)
-        self.hear(l.get("say", l["example"]))
+        self.hear(l.get("name_ru", l["lower"]), label="▶  Hear the letter")
         self.card("Name", l["name"])
         self.card("Sound", l["sound"])
         self.card("Example", "%s\n%s\n%s" % (l["example"], l["example_pron"], l["example_meaning"]))
+        self.hear(l["example"], label="▶  Hear the example word")
         nav = tk.Frame(self.page, bg=BG)
         nav.pack(fill="x", padx=16, pady=6)
         self.button("←  " + prev_l["upper"], lambda: self.show_letter(prev_l), parent=nav).pack(

@@ -167,7 +167,10 @@
       try { r = await speak(); } catch (e) { if (!tts || !tts.dead) throw e; r = await speak(); }   // restarted engine
       if (mine !== speakSeq) return;
       try {
-        playerUrl = URL.createObjectURL(wavBlob(r.samples, r.rate));
+        const lead = Math.round(r.rate * 0.25);            // 0.25 s lead-in: iPhone can clip the first moment
+        const padded = new Float32Array(lead + r.samples.length);
+        padded.set(r.samples, lead);
+        playerUrl = URL.createObjectURL(wavBlob(padded, r.rate));
         player.src = playerUrl;
         await player.play();
         return;
@@ -645,7 +648,7 @@
     render(h('div', { class: 'learn', id: 'learn' }, back, ...content));
     document.getElementById('learn').scrollTop = 0;
   }
-  const hearBtn = text => h('button', { class: 'btn hear', onclick: () => say(text) }, '🔊  Hear it');
+  const hearBtn = (text, label) => h('button', { class: 'btn hear', onclick: () => say(text) }, label || '🔊  Hear it');
   const lcard = (label, body) => h('div', { class: 'lcard' }, h('div', { class: 'lbl' }, label), h('div', { style: 'font-size:20px;white-space:pre-line' }, body));
 
   function showLearnHome() {
@@ -681,9 +684,10 @@
     learnPage(showLearnHome,
       h('div', { class: 'muted' }, 'Letter ' + (i + 1) + ' of ' + n),
       h('div', { class: 'bigletter' }, l.upper + ' ' + l.lower),
-      hearBtn(l.say || l.example),
+      hearBtn(l.name_ru || l.lower, '🔊  Hear the letter'),
       lcard('Name', l.name), lcard('Sound', l.sound),
       lcard('Example', l.example + '\n' + l.example_pron + '\n' + l.example_meaning),
+      hearBtn(l.example, '🔊  Hear the example word'),
       h('div', { class: 'row2' },
         h('button', { class: 'btn center', onclick: () => showLetter(prev) }, '←  ' + abc[prev].upper),
         h('button', { class: 'btn center accent', onclick: () => showLetter(next) }, abc[next].upper + '  →')));
