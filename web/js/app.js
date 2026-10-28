@@ -665,7 +665,7 @@
       h('h3', {}, 'Alphabet'), grid,
       h('h3', {}, 'Reading lessons'), lessons,
       h('h3', {}, 'Numbers & colors'),
-      learn.numbers ? h('button', { class: 'btn', onclick: showNumbers }, 'Numbers   ·   say any number') : null,
+      learn.numbers ? h('button', { class: 'btn', onclick: () => showNumbers(false) }, 'Numbers   ·   say any number') : null,
       learn.colors ? h('button', { class: 'btn', onclick: showColors }, 'Colors   ·   ' + learn.colors.items.length) : null,
       h('h3', {}, 'Phrases & verses'),
       listBtn('phrases', 'Common phrases'), listBtn('verses', 'Bible verses'), listBtn('military', 'Military phrases'),
