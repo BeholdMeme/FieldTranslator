@@ -6,7 +6,7 @@ import random
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "laptop"))
-from ru_numbers import to_words  # noqa: E402
+from ru_numbers import to_words, to_ordinal  # noqa: E402
 
 EXPECTED = {
     0: "ноль", 1: "один", 2: "два", 11: "одиннадцать", 20: "двадцать", 21: "двадцать один",
@@ -16,10 +16,21 @@ EXPECTED = {
     20000: "двадцать тысяч", 1000000: "миллион", 2000000: "два миллиона", 5000000: "пять миллионов",
     1000000000: "миллиард", -5: "минус пять",
 }
+ORD_EXPECTED = {
+    (0, "m"): "нулевой", (1, "m"): "первый", (2, "f"): "вторая", (3, "n"): "третье", (3, "f"): "третья",
+    (4, "m"): "четвёртый", (5, "n"): "пятое", (11, "m"): "одиннадцатый", (20, "m"): "двадцатый",
+    (21, "m"): "двадцать первый", (40, "m"): "сороковой", (90, "f"): "девяностая", (100, "m"): "сотый",
+    (101, "m"): "сто первый", (200, "m"): "двухсотый", (1000, "m"): "тысячный", (1001, "m"): "тысяча первый",
+    (2000, "m"): "двухтысячный", (2025, "m"): "две тысячи двадцать пятый", (5000, "m"): "пятитысячный",
+    (21000, "m"): "двадцатиоднотысячный", (100000, "m"): "стотысячный", (1000000, "m"): "миллионный",
+    (2000000, "m"): "двухмиллионный", (2005000, "m"): "два миллиона пятитысячный",
+    (3500, "m"): "три тысячи пятисотый", (1000000000, "m"): "миллиардный",
+}
 
 
 def main():
     bad = [(n, w, to_words(n)) for n, w in EXPECTED.items() if to_words(n) != w]
+    bad += [(k, w, to_ordinal(*k)) for k, w in ORD_EXPECTED.items() if to_ordinal(*k) != w]
     for b in bad:
         print("MISMATCH", b)
     if bad:
@@ -29,7 +40,8 @@ def main():
     nums += list(EXPECTED) + [999999999999]
     with open(sys.argv[1], "w", encoding="utf-8", newline="\n") as f:
         for n in nums:
-            f.write("%d\t%s\n" % (n, to_words(n)))
+            o = [to_ordinal(n, g) if n >= 0 else "" for g in "mfn"]
+            f.write("%d\t%s\t%s\t%s\t%s\n" % (n, to_words(n), o[0], o[1], o[2]))
     print("number examples OK; wrote", len(nums))
 
 

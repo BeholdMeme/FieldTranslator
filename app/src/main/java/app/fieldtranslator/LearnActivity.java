@@ -273,39 +273,51 @@ public class LearnActivity extends Activity {
         input.setTextSize(TypedValue.COMPLEX_UNIT_SP, 26);
         input.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(12)});
         box.addView(input);
-        final TextView words = text("", 22, Color.WHITE, true);
-        final TextView pr = text("", 17, GOLD, false);
-        box.addView(words);
-        box.addView(pr);
-        final String[] current = {""};
-        Button hear = button("🔊  Hear it", 0xFF1B2A45, v -> Voice.say(this, current[0]));
-        hear.setTextColor(0xFF9CC3FF);
-        hear.setGravity(Gravity.CENTER);
-        box.addView(hear, full(0));
+        final boolean hasOrd = nums.optJSONObject("ordinals") != null;
+        final boolean[] ordinal = {false};
+        final LinearLayout results = new LinearLayout(this);
+        results.setOrientation(LinearLayout.VERTICAL);
+        final Runnable update = () -> {
+            results.removeAllViews();
+            String t = input.getText().toString().trim();
+            if (t.isEmpty()) return;
+            long n;
+            try { n = Long.parseLong(t); if (n > RussianNumbers.MAX) throw new NumberFormatException(); }
+            catch (Exception ex) { results.addView(text("Up to 999,999,999,999", 18, Color.WHITE, true)); return; }
+            if (!ordinal[0]) { results.addView(sayLine(RussianNumbers.toWords(n), null)); return; }
+            results.addView(text(RussianNumbers.ordinalSuffix(n) + " - the ending matches what you count:", 13, MUTED, false));
+            results.addView(sayLine(RussianNumbers.toOrdinal(n, 'm'), "он · he-words:\nдень, этаж"));
+            results.addView(sayLine(RussianNumbers.toOrdinal(n, 'f'), "она · she-words:\nулица"));
+            results.addView(sayLine(RussianNumbers.toOrdinal(n, 'n'), "оно · it-words\n& dates"));
+        };
+        if (hasOrd) {
+            LinearLayout seg = new LinearLayout(this);
+            seg.setOrientation(LinearLayout.HORIZONTAL);
+            final Button b5 = button("5  (five)", ACCENT, null), b5th = button("5th  (fifth)", BTN, null);
+            b5.setGravity(Gravity.CENTER); b5th.setGravity(Gravity.CENTER);
+            b5.setOnClickListener(v -> { ordinal[0] = false; b5.setBackground(round(ACCENT)); b5th.setBackground(round(BTN));
+                input.setHint("Type a number, e.g. 2025"); update.run(); });
+            b5th.setOnClickListener(v -> { ordinal[0] = true; b5th.setBackground(round(ACCENT)); b5.setBackground(round(BTN));
+                input.setHint("Type a number, e.g. 5 for 5th"); update.run(); });
+            LinearLayout.LayoutParams s1 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            s1.setMargins(0, dp(6), dp(4), dp(2));
+            LinearLayout.LayoutParams s2 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            s2.setMargins(dp(4), dp(6), 0, dp(2));
+            seg.addView(b5, s1);
+            seg.addView(b5th, s2);
+            box.addView(seg, 1);
+        }
+        box.addView(results);
         input.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
             @Override public void onTextChanged(CharSequence s, int a, int b, int c) { }
-            @Override public void afterTextChanged(Editable e) {
-                String t = e.toString().trim();
-                if (t.isEmpty()) { words.setText(""); pr.setText(""); current[0] = ""; return; }
-                try {
-                    long n = Long.parseLong(t);
-                    String w = RussianNumbers.toWords(n);
-                    current[0] = w;
-                    words.setText(w);
-                    pr.setText(pron().pronounce(w));
-                } catch (Exception ex) {
-                    words.setText("Up to 999,999,999,999");
-                    pr.setText("");
-                    current[0] = "";
-                }
-            }
+            @Override public void afterTextChanged(Editable e) { update.run(); }
         });
         LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
         blp.setMargins(0, dp(6), 0, dp(6));
         page.addView(box, blp);
-        page.addView(button("Take the numbers quiz (10 questions)", GOOD, v -> startNumberQuiz()), full(0));
+        page.addView(button("Take the numbers quiz (10 questions)", GOOD, v -> startNumberQuiz(false)), full(0));
 
         // --- lesson groups
         JSONArray groups = nums.optJSONArray("groups");
@@ -319,6 +331,77 @@ public class LearnActivity extends Activity {
         page.addView(header("How it works"));
         JSONArray tips = nums.optJSONArray("tips");
         for (int i = 0; i < tips.length(); i++) page.addView(text("• " + tips.optString(i), 15, Color.WHITE, false));
+        if (hasOrd) showOrdinals(nums.optJSONObject("ordinals"));
+    }
+
+    private void showOrdinals(JSONObject ords) {
+        TextView t = title("1st, 2nd, 3rd…");
+        t.setPadding(0, dp(26), 0, dp(4));
+        page.addView(t);
+        page.addView(text("Ordinal numbers say which one in order. Tap any row to hear it.", 15, MUTED, false));
+        page.addView(button("Take the ordinals quiz (10 questions)", GOOD, v -> startNumberQuiz(true)), full(0));
+        JSONArray groups = ords.optJSONArray("groups");
+        for (int g = 0; g < groups.length(); g++) {
+            JSONObject grp = groups.optJSONObject(g);
+            page.addView(header(grp.optString("title")));
+            page.addView(text(grp.optString("note"), 14, MUTED, false));
+            JSONArray items = grp.optJSONArray("items");
+            for (int i = 0; i < items.length(); i++) {
+                JSONObject it = items.optJSONObject(i);
+                LinearLayout row = (LinearLayout) numberRow(it);
+                LinearLayout col = (LinearLayout) row.getChildAt(1);
+                col.addView(text("она " + it.optString("ru_f") + "  ·  оно " + it.optString("ru_n"), 13, MUTED, false));
+                page.addView(row);
+            }
+        }
+        page.addView(header("Dates"));
+        page.addView(text("Day (the -ое form) + month: пятое мая = May 5th.", 14, MUTED, false));
+        JSONArray dates = ords.optJSONArray("dates");
+        for (int i = 0; i < dates.length(); i++) page.addView(itemCard(dates.optJSONObject(i), true));
+        page.addView(header("Months"));
+        page.addView(text("Name of the month · the form used in dates (пятое мая).", 14, MUTED, false));
+        JSONArray months = ords.optJSONArray("months");
+        for (int i = 0; i < months.length(); i++) {
+            JSONObject m = months.optJSONObject(i);
+            JSONObject row = new JSONObject();
+            try {
+                row.put("digits", m.optString("en"));
+                row.put("ru", m.optString("of"));
+                row.put("pron", m.optString("pron") + "  ·  " + m.optString("pron_of"));
+            } catch (Exception ignored) { }
+            LinearLayout r = (LinearLayout) numberRow(row);
+            ((TextView) r.getChildAt(0)).setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+            ((TextView) ((LinearLayout) r.getChildAt(1)).getChildAt(0)).setText(m.optString("ru") + "  ·  " + m.optString("of"));
+            page.addView(r);
+        }
+        page.addView(header("In use"));
+        JSONArray ex = ords.optJSONArray("examples");
+        for (int i = 0; i < ex.length(); i++) page.addView(itemCard(ex.optJSONObject(i), true));
+        page.addView(header("How ordinals work"));
+        JSONArray tips = ords.optJSONArray("tips");
+        for (int i = 0; i < tips.length(); i++) page.addView(text("• " + tips.optString(i), 15, Color.WHITE, false));
+    }
+
+    /** One tappable line in the say-any-number box: optional label, Russian, pronunciation, speaker. */
+    private View sayLine(String russian, String label) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(8), 0, dp(8));
+        if (label != null) {
+            TextView l = text(label, 12, 0xFF9CC3FF, false);
+            l.setMinWidth(dp(84));
+            l.setMaxWidth(dp(96));
+            row.addView(l);
+        }
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.addView(text(russian, 22, Color.WHITE, true));
+        col.addView(text(pron().pronounce(russian), 17, GOLD, false));
+        row.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(text("🔊", 20, 0xFF9CC3FF, false));
+        row.setOnClickListener(v -> Voice.say(this, russian));
+        return row;
     }
 
     private View numberRow(JSONObject it) {
@@ -356,21 +439,37 @@ public class LearnActivity extends Activity {
         return 100000L + rnd.nextInt(9900000);
     }
 
-    private void startNumberQuiz() {
+    private void startNumberQuiz(boolean ordinals) {
         List<Q> qs = new ArrayList<>();
+        String[] gName = {"он", "она", "оно"};
+        char[] gs = {'m', 'f', 'n'};
         for (int n = 0; n < 10; n++) {
-            long num = randomQuizNumber();
+            long num = ordinals ? (n < 6 ? 1 + rnd.nextInt(20) : Math.max(1, randomQuizNumber())) : randomQuizNumber();
             Q q = new Q();
             List<Long> opts = new ArrayList<>();
             opts.add(num);
             while (opts.size() < 4) {
-                long d = Math.max(0, num + (rnd.nextBoolean() ? 1 : -1) * (1 + rnd.nextInt((int) Math.max(3, Math.min(num / 3 + 3, 5000)))));
-                if (rnd.nextInt(3) == 0) d = randomQuizNumber();
+                long d = Math.max(ordinals ? 1 : 0, num + (rnd.nextBoolean() ? 1 : -1) * (1 + rnd.nextInt((int) Math.max(3, Math.min(num / 3 + 3, 5000)))));
+                if (rnd.nextInt(3) == 0) d = Math.max(ordinals ? 1 : 0, randomQuizNumber());
+                if (ordinals && num <= 20) d = 1 + rnd.nextInt(20);
                 if (!opts.contains(d)) opts.add(d);
             }
             Collections.shuffle(opts, rnd);
             q.choices = new ArrayList<>();
-            if (n % 2 == 0) {
+            if (ordinals) {
+                int g = n % 3 == 2 ? (n % 2 == 1 ? 1 : 2) : 0;
+                if (n % 2 == 0) {
+                    q.prompt = "How do you say this (" + gName[g] + " form)?";
+                    q.big = RussianNumbers.ordinalSuffix(num);
+                    q.answer = RussianNumbers.toOrdinal(num, gs[g]);
+                    for (long o : opts) q.choices.add(RussianNumbers.toOrdinal(o, gs[g]));
+                } else {
+                    q.prompt = "Which one is this?";
+                    q.big = RussianNumbers.toOrdinal(num, gs[g]);
+                    q.answer = RussianNumbers.ordinalSuffix(num);
+                    for (long o : opts) q.choices.add(RussianNumbers.ordinalSuffix(o));
+                }
+            } else if (n % 2 == 0) {
                 q.prompt = "How do you say this number?";
                 q.big = RussianNumbers.formatDigits(num);
                 q.answer = RussianNumbers.toWords(num);
@@ -383,7 +482,7 @@ public class LearnActivity extends Activity {
             }
             qs.add(q);
         }
-        showQuestion(-1, qs, 0, 0);
+        showQuestion(ordinals ? -3 : -1, qs, 0, 0);
     }
 
     // ------------------------------------------------------------------ colors
@@ -649,10 +748,12 @@ public class LearnActivity extends Activity {
         if (score > best) prefs.edit().putInt("best_" + lessonIdx, score).apply();
         page.addView(title("Score: " + score + " / " + total));
         String good = lessonIdx == -1 ? "Great - your numbers are solid!" : lessonIdx == -2 ? "Great - you know your colors!"
+                : lessonIdx == -3 ? "Great - you know your 1st, 2nd, 3rd!"
                 : "Great - you've got these letters. On to the next lesson!";
         page.addView(text(score >= 8 ? good : "Keep practicing, then retake the quiz.", 18, Color.WHITE, false));
         page.addView(button("Retake quiz", BTN, v -> {
-            if (lessonIdx == -1) startNumberQuiz();
+            if (lessonIdx == -1) startNumberQuiz(false);
+            else if (lessonIdx == -3) startNumberQuiz(true);
             else if (lessonIdx == -2) startColorQuiz();
             else startQuiz(lessonIdx);
         }), full(dp(60)));

@@ -15,9 +15,9 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "laptop"))
 from pronounce import StressDict, pronounce  # noqa: E402
-from phrases_data import (COLOR_EXAMPLES, COLOR_TIPS, COLORS, DRONES, MILITARY, NUMBER_GROUPS,  # noqa: E402
-                          NUMBER_TIPS, PHRASES, VERSES)
-from ru_numbers import format_digits, to_words  # noqa: E402
+from phrases_data import (COLOR_EXAMPLES, COLOR_TIPS, COLORS, DATES, DRONES, MILITARY, MONTHS, NUMBER_GROUPS,  # noqa: E402
+                          NUMBER_TIPS, ORDINAL_EXAMPLES, ORDINAL_GROUPS, ORDINAL_TIPS, PHRASES, VERSES)
+from ru_numbers import format_digits, ordinal_suffix, to_ordinal, to_words  # noqa: E402
 from pronounce import EXCEPTIONS  # noqa: E402
 
 VOWELS = "аеёиоуыэюя"
@@ -177,8 +177,21 @@ def main(csv_dir, out_dir):
     def num(n):
         w = to_words(n)
         return {"n": n, "digits": format_digits(n), "ru": w, "pron": pronounce(w, sd)}
+    def ordn(n):
+        it = {"n": n, "digits": ordinal_suffix(n)}
+        for g, key in (("m", ""), ("f", "_f"), ("n", "_n")):
+            w = to_ordinal(n, g)
+            it["ru" + key] = w
+            it["pron" + key] = pronounce(w, sd)
+        return it
+    pr = lambda items: [{"ru": ru, "en": en, "pron": pronounce(ru, sd)} for ru, en in items]  # noqa: E731
     numbers = {"groups": [{"title": t, "note": note, "items": [num(n) for n in ns]} for t, note, ns in NUMBER_GROUPS],
-               "tips": NUMBER_TIPS}
+               "tips": NUMBER_TIPS,
+               "ordinals": {"groups": [{"title": t, "note": note, "items": [ordn(n) for n in ns]} for t, note, ns in ORDINAL_GROUPS],
+                            "examples": pr(ORDINAL_EXAMPLES), "dates": pr(DATES),
+                            "months": [{"ru": a, "of": b, "en": en, "pron": pronounce(a, sd), "pron_of": pronounce(b, sd)}
+                                       for a, b, en in MONTHS],
+                            "tips": ORDINAL_TIPS}}
     colors = {"items": [{"ru": ru, "en": en, "hex": hx, "pron": pronounce(ru, sd)} for ru, en, hx in COLORS],
               "tips": COLOR_TIPS,
               "examples": [{"ru": ru, "en": en, "pron": pronounce(ru, sd)} for ru, en in COLOR_EXAMPLES]}

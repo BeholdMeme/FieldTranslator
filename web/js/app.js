@@ -808,27 +808,88 @@
       h('div', { style: 'color:var(--hear);font-size:20px' }, '🔊'));
   }
 
-  function showNumbers() {
-    const nums = learn.numbers;
+  const GENDERS = [['m', 'он', 'he-words: день, этаж'], ['f', 'она', 'she-words: улица'], ['n', 'оно', 'it-words & dates']];
+
+  function ordinalRow(it) {
+    return h('div', { class: 'numrow', onclick: () => say(it.ru) },
+      h('div', { class: 'd' }, it.digits),
+      h('div', { class: 'w' }, h('div', {}, it.ru), h('div', {}, it.pron),
+        h('div', { class: 'forms' }, 'она ' + it.ru_f + '  ·  оно ' + it.ru_n)),
+      h('div', { style: 'color:var(--hear);font-size:20px' }, '🔊'));
+  }
+
+  function phraseCard(it) {
+    return h('div', { class: 'lcard' }, h('div', { class: 'ru' }, it.ru), h('div', { class: 'pr' }, it.pron),
+      h('div', { class: 'en' }, it.en), h('button', { class: 'hearlink', onclick: () => say(it.ru) }, '🔊  Hear it'));
+  }
+
+  function showNumbers(startOrdinal) {
+    const nums = learn.numbers, ords = nums.ordinals;
+    let ordinal = !!startOrdinal && !!ords;
     const input = h('input', { type: 'text', inputmode: 'numeric', pattern: '[0-9]*', placeholder: 'Type a number, e.g. 2025', maxlength: 15 });
-    const w = h('div', { class: 'w' }), p = h('div', { class: 'p' });
+    const out = h('div');
+    const b5 = h('button', { onclick: () => setMode(false) }, '5   (five)');
+    const b5th = h('button', { onclick: () => setMode(true) }, '5th   (fifth)');
+    const toggle = ords ? h('div', { class: 'seg mini' }, b5, b5th) : null;
     let cur = '';
-    input.oninput = () => {
-      const t = input.value.replace(/[,\s]/g, '');
-      if (!t) { w.textContent = ''; p.textContent = ''; cur = ''; return; }
-      if (!/^\d+$/.test(t) || Number(t) > FT.MAX_NUMBER) { w.textContent = 'Whole numbers up to 999,999,999,999'; p.textContent = ''; cur = ''; return; }
-      cur = FT.numberToWords(Number(t));
-      w.textContent = cur;
-      p.textContent = pronouncer.pronounce(cur);
-    };
+    function line(text, label) {
+      return h('div', { class: 'sayline', onclick: () => say(text) },
+        label ? h('div', { class: 'g' }, label) : null,
+        h('div', { class: 'tx' }, h('div', { class: 'w' }, text), h('div', { class: 'p' }, pronouncer.pronounce(text))),
+        h('div', { class: 'spk2' }, '🔊'));
+    }
+    function update() {
+      const t = input.value.replace(/[,\s]/g, '').replace(/(st|nd|rd|th)$/i, '');
+      out.replaceChildren();
+      cur = '';
+      if (!t) return;
+      if (!/^\d+$/.test(t) || Number(t) > FT.MAX_NUMBER) { out.append(h('div', { class: 'w' }, 'Whole numbers up to 999,999,999,999')); return; }
+      const n = Number(t);
+      if (!ordinal) { cur = FT.numberToWords(n); out.append(line(cur)); return; }
+      out.append(h('div', { class: 'muted small', style: 'margin:4px 0 2px' }, FT.ordinalSuffix(n) + ' - the ending matches what you count:'));
+      for (const [g, word, note] of GENDERS) {
+        const text = FT.numberToOrdinal(n, g);
+        if (g === 'm') cur = text;
+        out.append(line(text, word + ' · ' + note));
+      }
+    }
+    function setMode(o) {
+      ordinal = o;
+      b5.classList.toggle('on', !o); b5th.classList.toggle('on', o);
+      input.placeholder = o ? 'Type a number, e.g. 5 for 5th' : 'Type a number, e.g. 2025';
+      update();
+    }
+    input.oninput = update;
+    const ordSection = ords ? [
+      h('h2', { id: 'ordinals', style: 'margin-top:26px' }, '1st, 2nd, 3rd…'),
+      h('div', { class: 'muted' }, 'Ordinal numbers say which one in order. Tap any row to hear it.'),
+      h('button', { class: 'btn center good', onclick: () => numberQuiz(true) }, 'Take the ordinals quiz (10 questions)'),
+      ords.groups.map(g => [h('h3', {}, g.title), h('div', { class: 'muted small' }, g.note), g.items.map(ordinalRow)]),
+      h('h3', {}, 'Dates'),
+      h('div', { class: 'muted small' }, 'Day (the -ое form) + month: пятое мая = May 5th.'),
+      ords.dates.map(phraseCard),
+      h('h3', {}, 'Months'),
+      h('div', { class: 'muted small' }, 'Name of the month · the form used in dates (пятое мая).'),
+      ords.months.map(m => h('div', { class: 'numrow', onclick: () => say(m.of) },
+        h('div', { class: 'd', style: 'font-size:16px;min-width:96px' }, m.en),
+        h('div', { class: 'w' }, h('div', {}, m.ru + '  ·  ' + m.of), h('div', {}, m.pron + '  ·  ' + m.pron_of)),
+        h('div', { style: 'color:var(--hear);font-size:20px' }, '🔊'))),
+      h('h3', {}, 'In use'),
+      ords.examples.map(phraseCard),
+      h('h3', {}, 'How ordinals work'),
+      ords.tips.map(t => h('div', { style: 'margin:6px 0' }, '• ' + t)),
+    ] : [];
     learnPage(showLearnHome,
       h('h2', {}, 'Numbers'),
       h('div', { class: 'saynum' }, h('div', { style: 'color:var(--hear);font-weight:700;font-size:14px' }, 'Say any number'),
-        input, w, p, h('button', { class: 'btn hear', onclick: () => say(cur) }, '🔊  Hear it')),
-      h('button', { class: 'btn center good', onclick: numberQuiz }, 'Take the numbers quiz (10 questions)'),
+        toggle, input, out),
+      h('button', { class: 'btn center good', onclick: () => numberQuiz(false) }, 'Take the numbers quiz (10 questions)'),
+      ords ? h('button', { class: 'btn center', onclick: () => document.getElementById('ordinals').scrollIntoView() }, 'Jump to 1st, 2nd, 3rd… (ordinals)') : null,
       nums.groups.map(g => [h('h3', {}, g.title), h('div', { class: 'muted small' }, g.note), g.items.map(numberRow)]),
       h('h3', {}, 'How it works'),
-      nums.tips.map(t => h('div', { style: 'margin:6px 0' }, '• ' + t)));
+      nums.tips.map(t => h('div', { style: 'margin:6px 0' }, '• ' + t)),
+      ordSection);
+    setMode(ordinal);
   }
 
   function randomQuizNumber() {
@@ -840,21 +901,29 @@
     return 100000 + rnd(9900000);
   }
 
-  function numberQuiz() {
+  function numberQuiz(ordinals) {
     const qs = [];
+    const G = { m: 'он', f: 'она', n: 'оно' };
     for (let n = 0; n < 10; n++) {
-      const num = randomQuizNumber();
+      const num = ordinals ? (n < 6 ? 1 + rnd(20) : randomQuizNumber() || 1) : randomQuizNumber();
       const opts = [num];
       while (opts.length < 4) {
-        let d = Math.max(0, num + (Math.random() < 0.5 ? 1 : -1) * (1 + rnd(Math.max(3, Math.min(Math.floor(num / 3) + 3, 5000)))));
-        if (rnd(3) === 0) d = randomQuizNumber();
+        let d = Math.max(ordinals ? 1 : 0, num + (Math.random() < 0.5 ? 1 : -1) * (1 + rnd(Math.max(3, Math.min(Math.floor(num / 3) + 3, 5000)))));
+        if (rnd(3) === 0) d = randomQuizNumber() || 1;
+        if (ordinals && num <= 20) d = 1 + rnd(20);           // keep choices close for 1st-20th
         if (opts.indexOf(d) < 0) opts.push(d);
       }
       shuffle(opts);
-      if (n % 2 === 0) qs.push({ prompt: 'How do you say this number?', big: FT.formatDigits(num), answer: FT.numberToWords(num), choices: opts.map(FT.numberToWords) });
+      if (ordinals) {
+        const g = n % 3 === 2 ? (n % 2 ? 'f' : 'n') : 'm';
+        const word = x => FT.numberToOrdinal(x, g);
+        if (n % 2 === 0) qs.push({ prompt: 'How do you say this (' + G[g] + ' form)?', big: FT.ordinalSuffix(num), answer: word(num), choices: opts.map(word) });
+        else qs.push({ prompt: 'Which one is this?', big: word(num), answer: FT.ordinalSuffix(num), choices: opts.map(FT.ordinalSuffix) });
+      } else if (n % 2 === 0) qs.push({ prompt: 'How do you say this number?', big: FT.formatDigits(num), answer: FT.numberToWords(num), choices: opts.map(FT.numberToWords) });
       else qs.push({ prompt: 'Which number is this?', big: FT.numberToWords(num), answer: FT.formatDigits(num), choices: opts.map(FT.formatDigits) });
     }
-    quiz('numbers', qs, showNumbers, numberQuiz, 'Great - your numbers are solid!');
+    quiz(ordinals ? 'ordinals' : 'numbers', qs, () => showNumbers(ordinals), () => numberQuiz(ordinals),
+      ordinals ? 'Great - you know your 1st, 2nd, 3rd!' : 'Great - your numbers are solid!');
   }
 
   // --- colors

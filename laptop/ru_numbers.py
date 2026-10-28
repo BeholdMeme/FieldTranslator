@@ -81,3 +81,97 @@ def to_words(n):
 def format_digits(n):
     """1234567 -> '1,234,567'"""
     return "{:,}".format(int(n))
+
+
+# ---------------------------------------------------------------- ordinals (1st, 2nd, 25th, 1000th ...)
+# Only the last word becomes ordinal ("двадцать пятый"). A number ending in a round thousand /
+# million / billion fuses into one word ("двухтысячный", "пятимиллионный").
+# Gender: "m" = пятый (день, этаж), "f" = пятая (улица), "n" = пятое (число - dates: пятое мая).
+ORD_UNITS = ["нулевой", "первый", "второй", "третий", "четвёртый", "пятый", "шестой", "седьмой",
+             "восьмой", "девятый"]
+ORD_TEENS = ["десятый", "одиннадцатый", "двенадцатый", "тринадцатый", "четырнадцатый", "пятнадцатый",
+             "шестнадцатый", "семнадцатый", "восемнадцатый", "девятнадцатый"]
+ORD_TENS = ["", "", "двадцатый", "тридцатый", "сороковой", "пятидесятый", "шестидесятый",
+            "семидесятый", "восьмидесятый", "девяностый"]
+ORD_HUNDREDS = ["", "сотый", "двухсотый", "трёхсотый", "четырёхсотый", "пятисотый", "шестисотый",
+                "семисотый", "восьмисотый", "девятисотый"]
+GEN_UNITS = ["", "одно", "двух", "трёх", "четырёх", "пяти", "шести", "семи", "восьми", "девяти"]
+GEN_TEENS = ["десяти", "одиннадцати", "двенадцати", "тринадцати", "четырнадцати", "пятнадцати",
+             "шестнадцати", "семнадцати", "восемнадцати", "девятнадцати"]
+GEN_TENS = ["", "", "двадцати", "тридцати", "сорока", "пятидесяти", "шестидесяти", "семидесяти",
+            "восьмидесяти", "девяноста"]
+GEN_HUNDREDS = ["", "сто", "двухсот", "трёхсот", "четырёхсот", "пятисот", "шестисот", "семисот",
+                "восьмисот", "девятисот"]
+SCALE_ORD = ["тысячный", "миллионный", "миллиардный"]
+
+
+def _gender(word, g):
+    if g == "m":
+        return word
+    if word.endswith("ий"):                    # третий -> третья / третье
+        return word[:-2] + ("ья" if g == "f" else "ье")
+    return word[:-2] + ("ая" if g == "f" else "ое")   # -ый / -ой
+
+
+def _ord_triple(n):
+    """Words for 1..999 with the last word ordinal."""
+    h, rest = divmod(n, 100)
+    if rest == 0:
+        return [ORD_HUNDREDS[h]]
+    words = [HUNDREDS[h]] if h else []
+    if 10 <= rest <= 19:
+        words.append(ORD_TEENS[rest - 10])
+    else:
+        t, u = divmod(rest, 10)
+        if u == 0:
+            words.append(ORD_TENS[t])
+        else:
+            if t:
+                words.append(TENS[t])
+            words.append(ORD_UNITS[u])
+    return words
+
+
+def _gen_prefix(n):
+    """1..999 in the fused genitive form used before -тысячный: 21 -> 'двадцатиодно'."""
+    if n == 1:
+        return ""
+    h, rest = divmod(n, 100)
+    out = GEN_HUNDREDS[h]
+    if 10 <= rest <= 19:
+        out += GEN_TEENS[rest - 10]
+    else:
+        t, u = divmod(rest, 10)
+        out += GEN_TENS[t] + GEN_UNITS[u]
+    return out
+
+
+def to_ordinal(n, gender="m"):
+    n = int(n)
+    if n < 0 or n > MAX:
+        raise ValueError("number out of range")
+    if n == 0:
+        return _gender(ORD_UNITS[0], gender)
+    groups = []
+    m = n
+    while m:
+        m, g = divmod(m, 1000)
+        groups.append(g)
+    k = next(i for i, g in enumerate(groups) if g)          # lowest non-zero group
+    upper = n - n % (1000 ** (k + 1))                         # the part said as a normal number
+    words = to_words(upper).split() if upper else []
+    if k == 0:
+        last = _ord_triple(groups[0])
+    else:
+        last = [_gen_prefix(groups[k]) + SCALE_ORD[k - 1]]
+    words += last
+    words[-1] = _gender(words[-1], gender)
+    return " ".join(words)
+
+
+def ordinal_suffix(n):
+    """English '1st', '2nd', '23rd', '11th'."""
+    n = int(n)
+    if 11 <= n % 100 <= 13:
+        return "%dth" % n
+    return "%d%s" % (n, {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th"))

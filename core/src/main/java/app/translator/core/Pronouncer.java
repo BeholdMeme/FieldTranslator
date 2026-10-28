@@ -134,8 +134,18 @@ public final class Pronouncer {
         for (int i = 0; i < w.length(); i++) if (isVowel(w.charAt(i))) vi.add(i);
         if (vi.size() == 1) return vi.get(0);
         if (vi.isEmpty()) return null;
-        return dict == null ? null : dict.get(w);
+        Integer st = dict == null ? null : dict.get(w);
+        if (st == null) {
+            // number words fused with a round number ("двухтысячный") keep the stress of their tail
+            for (int k = 0; k < COMPOUND_TAILS.length; k++) {
+                int p = w.lastIndexOf(COMPOUND_TAILS[k]);
+                if (p > 0) return p + COMPOUND_OFFSETS[k];
+            }
+        }
+        return st;
     }
+    static final String[] COMPOUND_TAILS = {"тысячн", "миллионн", "миллиардн", "сотый", "сотая", "сотое"};
+    static final int[] COMPOUND_OFFSETS = {1, 5, 5, 1, 1, 1};
 
     static char[] assimilate(String word) {
         char[] w = word.toCharArray();
@@ -174,7 +184,7 @@ public final class Pronouncer {
         if ((w.endsWith("ого") || w.endsWith("его")) && w.length() > 3 && !OGO_KEEP_G.contains(w)) {
             w = w.substring(0, w.length() - 2) + "в" + w.charAt(w.length() - 1);
         }
-        String[][] silent = {{"вств", "ств"}, {"здн", "зн"}, {"стн", "сн"}, {"лнц", "нц"}, {"рдц", "рц"}};
+        String[][] silent = {{"вств", "ств"}, {"здн", "зн"}, {"стн", "сн"}, {"лнц", "нц"}, {"рдц", "рц"}, {"дц", "ц"}};
         for (String[] ab : silent) {
             int off = w.indexOf(ab[0]);
             if (off >= 0) {

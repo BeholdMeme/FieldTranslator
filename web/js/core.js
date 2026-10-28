@@ -286,6 +286,7 @@
   const isVowel = c => VOWELS.indexOf(c) >= 0;
   const has = (set, c) => c.length === 1 && set.indexOf(c) >= 0;
 
+  const COMPOUND_TAILS = [['тысячн', 1], ['миллионн', 5], ['миллиардн', 5], ['сотый', 1], ['сотая', 1], ['сотое', 1]];
   class Pronouncer {
     constructor(dict, exceptions) {
       this.dict = dict;
@@ -299,7 +300,16 @@
       for (let i = 0; i < w.length; i++) if (isVowel(w[i])) vi.push(i);
       if (vi.length === 1) return vi[0];
       if (!vi.length) return null;
-      return this.dict ? this.dict.get(w) : null;
+      const st = this.dict ? this.dict.get(w) : null;
+      if (st === null || st === undefined) {
+        // number words fused with a round number ("двухтысячный") keep the stress of their tail
+        for (const [tail, off] of COMPOUND_TAILS) {
+          const p = w.lastIndexOf(tail);
+          if (p > 0) return p + off;
+        }
+        return null;
+      }
+      return st;
     }
 
     static assimilate(word) {
@@ -328,7 +338,7 @@
       if ((w.endsWith('ого') || w.endsWith('его')) && w.length > 3 && !OGO_KEEP_G.has(w)) {
         w = w.slice(0, -2) + 'в' + w[w.length - 1];
       }
-      for (const [a, b] of [['вств', 'ств'], ['здн', 'зн'], ['стн', 'сн'], ['лнц', 'нц'], ['рдц', 'рц']]) {
+      for (const [a, b] of [['вств', 'ств'], ['здн', 'зн'], ['стн', 'сн'], ['лнц', 'нц'], ['рдц', 'рц'], ['дц', 'ц']]) {
         const off = w.indexOf(a);
         if (off >= 0) {
           if (st !== null && st > off) st -= 1;
@@ -497,7 +507,75 @@
     return Math.trunc(Number(n)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   }
 
-  const api = { SpmTokenizer, MarianTranslator, prepareText, StressDict, Pronouncer, numberToWords, formatDigits, MAX_NUMBER: MAX };
+
+  // ---------------------------------------------------------------- ordinals (mirror of laptop/ru_numbers.py)
+  const ORD_UNITS = ['нулевой', 'первый', 'второй', 'третий', 'четвёртый', 'пятый', 'шестой', 'седьмой', 'восьмой', 'девятый'];
+  const ORD_TEENS = ['десятый', 'одиннадцатый', 'двенадцатый', 'тринадцатый', 'четырнадцатый', 'пятнадцатый', 'шестнадцатый',
+    'семнадцатый', 'восемнадцатый', 'девятнадцатый'];
+  const ORD_TENS = ['', '', 'двадцатый', 'тридцатый', 'сороковой', 'пятидесятый', 'шестидесятый', 'семидесятый', 'восьмидесятый', 'девяностый'];
+  const ORD_HUNDREDS = ['', 'сотый', 'двухсотый', 'трёхсотый', 'четырёхсотый', 'пятисотый', 'шестисотый', 'семисотый', 'восьмисотый', 'девятисотый'];
+  const GEN_UNITS = ['', 'одно', 'двух', 'трёх', 'четырёх', 'пяти', 'шести', 'семи', 'восьми', 'девяти'];
+  const GEN_TEENS = ['десяти', 'одиннадцати', 'двенадцати', 'тринадцати', 'четырнадцати', 'пятнадцати', 'шестнадцати',
+    'семнадцати', 'восемнадцати', 'девятнадцати'];
+  const GEN_TENS = ['', '', 'двадцати', 'тридцати', 'сорока', 'пятидесяти', 'шестидесяти', 'семидесяти', 'восьмидесяти', 'девяноста'];
+  const GEN_HUNDREDS = ['', 'сто', 'двухсот', 'трёхсот', 'четырёхсот', 'пятисот', 'шестисот', 'семисот', 'восьмисот', 'девятисот'];
+  const SCALE_ORD = ['тысячный', 'миллионный', 'миллиардный'];
+
+  function genderForm(w, g) {
+    if (g === 'm') return w;
+    const stem = w.slice(0, -2);
+    if (w.endsWith('ий')) return stem + (g === 'f' ? 'ья' : 'ье');
+    return stem + (g === 'f' ? 'ая' : 'ое');
+  }
+
+  function ordTriple(n, out) {
+    const h = Math.floor(n / 100), rest = n % 100;
+    if (rest === 0) { out.push(ORD_HUNDREDS[h]); return; }
+    if (h) out.push(HUNDREDS[h]);
+    if (rest >= 10 && rest <= 19) out.push(ORD_TEENS[rest - 10]);
+    else {
+      const t = Math.floor(rest / 10), u = rest % 10;
+      if (u === 0) out.push(ORD_TENS[t]);
+      else { if (t) out.push(TENS[t]); out.push(ORD_UNITS[u]); }
+    }
+  }
+
+  function genPrefix(n) {
+    if (n === 1) return '';
+    const h = Math.floor(n / 100), rest = n % 100;
+    let s = GEN_HUNDREDS[h];
+    if (rest >= 10 && rest <= 19) s += GEN_TEENS[rest - 10];
+    else s += GEN_TENS[Math.floor(rest / 10)] + GEN_UNITS[rest % 10];
+    return s;
+  }
+
+  /** 5 -> 'пятый' ('m'), 'пятая' ('f'), 'пятое' ('n'); 2000 -> 'двухтысячный'. */
+  function numberToOrdinal(n, g) {
+    g = g || 'm';
+    n = Math.trunc(Number(n));
+    if (!(n >= 0 && n <= MAX)) throw new Error('number out of range');
+    if (n === 0) return genderForm(ORD_UNITS[0], g);
+    const groups = [];
+    for (let m = n; m > 0; m = Math.floor(m / 1000)) groups.push(m % 1000);
+    let k = 0;
+    while (!groups[k]) k++;
+    const scale = Math.pow(1000, k + 1);
+    const upper = n - n % scale;
+    const out = upper ? numberToWords(upper).split(' ') : [];
+    if (k === 0) ordTriple(groups[0], out);
+    else out.push(genPrefix(groups[k]) + SCALE_ORD[k - 1]);
+    out[out.length - 1] = genderForm(out[out.length - 1], g);
+    return out.join(' ');
+  }
+
+  /** English '1st', '2nd', '23rd', '11th'. */
+  function ordinalSuffix(n) {
+    n = Math.trunc(Number(n));
+    if (n % 100 >= 11 && n % 100 <= 13) return n + 'th';
+    return n + ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th');
+  }
+
+  const api = { SpmTokenizer, MarianTranslator, prepareText, StressDict, Pronouncer, numberToWords, numberToOrdinal, ordinalSuffix, formatDigits, MAX_NUMBER: MAX };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.FT = api;
 })(typeof self !== 'undefined' ? self : this);

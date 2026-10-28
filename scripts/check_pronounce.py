@@ -17,6 +17,7 @@ EXPECTED = {
     "учиться": "oo-CHEE-tsuh", "здравствуйте": "ZDRAST-vooy-tye", "Привет, как дела?": "pri-VYET, kak di-LA?",
     "вокзал": "vag-ZAL", "окно": "ak-NO", "меня": "mi-NYA", "язык": "yi-ZYK", "всё": "fsyo",
     "нового": "NO-vuh-vuh", "много": "MNO-guh", "день": "dyen'", "Москва": "mas-KVA",
+    "двухтысячный": "dvookh-TY-sich-niy", "сороковой": "suh-ruh-ka-VOY", "четвёртый": "chit-VYOR-tiy",
 }
 
 
@@ -35,6 +36,9 @@ def main():
     words = [l.split("\t")[0] for l in open(sys.argv[1], encoding="utf-8")]
     rnd = random.Random(7)
     sample = list(EXPECTED) + rnd.sample(words, 4000) + [w[:-1] + "ф" for w in rnd.sample(words, 300)]
+    from ru_numbers import to_ordinal  # noqa: E402
+    sample += [to_ordinal(n, g) for n in list(range(0, 120)) + [rnd.randint(0, 10 ** k) * 10 ** rnd.randint(0, 9) % (10 ** 12)
+               for k in range(1, 4) for _ in range(60)] for g in "mfn"]
     sample += ["Где находится вокзал?", "Я не понимаю.", "кто-то", "Тест abc 123", "ЖИЗНЬ", "объект"]
     with open(sys.argv[2], "w", encoding="utf-8", newline="\n") as f:
         for s in sample:

@@ -203,6 +203,38 @@ NUMBER_GROUPS = [
     ("Putting it together", "Say each part, biggest first. There is no \"and\": 2,025 = две тысячи двадцать пять.",
      [21, 35, 99, 101, 250, 1999, 2025, 20500, 150000, 1250000]),
 ]
+
+# Ordinals: (title, note, numbers); each shows the он / она / оно forms
+ORDINAL_GROUPS = [
+    ("1st – 10th", "Most look like their number: пять → пятый. 1st, 2nd and 4th are the odd ones.", list(range(1, 11))),
+    ("11th – 19th and the tens", "-надцать → -надцатый, -дцать → -дцатый. 40th is сороковой.",
+     [11, 12, 15, 20, 30, 40, 50, 90]),
+    ("Bigger ones", "Only the last word changes: 25th = двадцать пятый. Round thousands join into one word: 2000th = двухтысячный.",
+     [21, 25, 100, 101, 200, 1000, 2000, 1000000]),
+]
+ORDINAL_EXAMPLES = [
+    ("пятый этаж", "the 5th floor"), ("первая улица", "the 1st street"), ("второй раз", "the second time"),
+    ("третье место", "third place"), ("десятый день", "the 10th day"), ("последний", "the last one"),
+]
+DATES = [
+    ("первое января", "January 1st"), ("двадцать третье февраля", "February 23rd"), ("восьмое марта", "March 8th"),
+    ("пятое мая", "May 5th"), ("девятое мая", "May 9th"), ("двенадцатое июня", "June 12th"),
+    ("первое сентября", "September 1st"), ("тридцать первое декабря", "December 31st"),
+]
+MONTHS = [
+    ("январь", "января", "January"), ("февраль", "февраля", "February"), ("март", "марта", "March"),
+    ("апрель", "апреля", "April"), ("май", "мая", "May"), ("июнь", "июня", "June"), ("июль", "июля", "July"),
+    ("август", "августа", "August"), ("сентябрь", "сентября", "September"), ("октябрь", "октября", "October"),
+    ("ноябрь", "ноября", "November"), ("декабрь", "декабря", "December"),
+]
+ORDINAL_TIPS = [
+    "Only the last word changes: 25 = двадцать пять, 25th = двадцать пятый.",
+    "The ending matches the thing you count: -ый/-ой for \"he\" words (день, этаж), -ая for \"she\" words (улица), "
+    "-ое for \"it\" words (место, число).",
+    "Dates use the -ое form plus the month ending in -а/-я: пятое мая = May 5th (literally \"the fifth of May\").",
+    "Round thousands and millions join into one word: 2000th = двухтысячный, 5,000,000th = пятимиллионный.",
+    "After на / в the ending changes again (на пятом этаже = on the 5th floor). Start with the forms here; people will understand you.",
+]
 NUMBER_TIPS = [
     "Build any number piece by piece, biggest part first: 345 = триста (300) сорок (40) пять (5).",
     "After 1 the thousand word is тысяча, after 2–4 it's тысячи, after 5–20 it's тысяч. 21 starts over: двадцать одна тысяча.",

@@ -53,6 +53,8 @@ EXCEPTIONS = {
     # numbers
     "одна": "ad-NA", "одно": "ad-NO", "одиннадцать": "a-DEE-nuh-tsuht'", "двенадцать": "dvi-NA-tsuht'", "тринадцать": "tri-NA-tsuht'", "четырнадцать": "chi-TYR-nuh-tsuht'", "пятнадцать": "pit-NA-tsuht'", "шестнадцать": "shys-NA-tsuht'", "семнадцать": "sim-NA-tsuht'", "восемнадцать": "vuh-sim-NA-tsuht'", "девятнадцать": "di-vit-NA-tsuht'", "двадцать": "DVA-tsuht'", "тридцать": "TREE-tsuht'", "пятьдесят": "pid-di-SYAT", "шестьдесят": "shyz-di-SYAT", "семьдесят": "SYEM-di-syat", "восемьдесят": "VO-sim-di-syat", "шестьсот": "shys-SOT",
 }
+# tails of fused ordinal numbers and the offset of their stressed vowel (двухтЫсячный, пятимиллиОнный)
+COMPOUND_TAILS = (("тысячн", 1), ("миллионн", 5), ("миллиардн", 5), ("сотый", 1), ("сотая", 1), ("сотое", 1))
 # words ending in -ого/-его where г really is г
 OGO_KEEP_G = {"много", "немного", "строго", "нестрого", "дорого", "недорого", "убого", "полого", "отлого"}
 
@@ -84,7 +86,14 @@ def stress_of(word, sd):
         return vi[0]
     if not vi:
         return None
-    return sd.get(word) if sd else None
+    st = sd.get(word) if sd else None
+    if st is None:
+        # number words fused with a round number ("двухтысячный") keep the stress of their tail
+        for tail, off in COMPOUND_TAILS:
+            p = word.rfind(tail)
+            if p > 0:
+                return p + off
+    return st
 
 
 def _assimilate(word):
@@ -124,8 +133,8 @@ def _word(word, sd):
     # г -> в in the genitive endings -ого/-его (его, нового, моего ...)
     if (w.endswith("ого") or w.endswith("его")) and len(w) > 3 and w not in OGO_KEEP_G:
         w = w[:-2] + "в" + w[-1]
-    # silent letters: здн, стн, вств, лнц
-    for a, b in (("вств", "ств"), ("здн", "зн"), ("стн", "сн"), ("лнц", "нц"), ("рдц", "рц")):
+    # silent letters: здн, стн, вств, лнц, дц
+    for a, b in (("вств", "ств"), ("здн", "зн"), ("стн", "сн"), ("лнц", "нц"), ("рдц", "рц"), ("дц", "ц")):
         if a in w:
             off = w.index(a)
             if st is not None and st > off:

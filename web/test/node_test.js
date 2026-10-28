@@ -45,8 +45,13 @@ async function main() {
   if (env('NUM_REF')) {
     let k = 0;
     for (const l of lines(env('NUM_REF'))) {
-      const [num, words] = l.split('\t');
+      const [num, words, om, of, on] = l.split('\t');
       check('number ' + num, FT.numberToWords(Number(num)), words);
+      if (Number(num) >= 0) {
+        check('ordinal m ' + num, FT.numberToOrdinal(Number(num), 'm'), om);
+        check('ordinal f ' + num, FT.numberToOrdinal(Number(num), 'f'), of);
+        check('ordinal n ' + num, FT.numberToOrdinal(Number(num), 'n'), on);
+      }
       k++;
     }
     console.log(`Numbers (JS): ${k} cases`);

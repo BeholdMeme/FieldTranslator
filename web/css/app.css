@@ -109,3 +109,10 @@ ol.steps { padding-left: 22px; color: var(--text); } ol.steps li { margin: 6px 0
 .feedback { font-weight: 700; font-size: 18px; margin: 8px 0; }
 .topbar { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
 .topbar .btn { width: auto; display: inline-block; padding: 10px 14px; margin: 0; }
+.seg.mini { margin: 8px 0; } .seg.mini button { padding: 7px 4px; font-weight: 650; }
+.seg.mini button.on { background: var(--accent); color: #fff; }
+.sayline { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid #ffffff14; cursor: pointer; }
+.sayline:first-of-type { border-top: 0; }
+.sayline .g { color: var(--hear); font-size: 12px; min-width: 74px; max-width: 90px; line-height: 1.25; }
+.sayline .tx { flex: 1; min-width: 0; } .sayline .spk2 { color: var(--hear); font-size: 20px; }
+.numrow .forms { color: var(--muted) !important; font-size: 13px !important; margin-top: 2px; }

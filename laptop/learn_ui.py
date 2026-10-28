@@ -260,9 +260,38 @@ class LearnWindow:
         from pronounce import pronounce
         return pronounce(text, self._sd)
 
-    def numbers(self):
-        from ru_numbers import to_words
+    def _row(self, digits, ru, pron, extra=None, say=None, digits_size=16):
+        f = tk.Frame(self.page, bg=CARD, cursor="hand2")
+        f.pack(fill="x", padx=16, pady=3)
+        d = tk.Label(f, text=digits, bg=CARD, fg=ACCENT, font=(FONT, digits_size, "bold"), width=13, anchor="w")
+        d.pack(side="left", padx=(12, 6), pady=6)
+        col = tk.Frame(f, bg=CARD)
+        col.pack(side="left", fill="x", expand=True)
+        wdgs = [f, d, col]
+        for txt_, fg, size in ((ru, "white", 13), (pron, GOLD, 11)) + (((extra, MUTED, 10),) if extra else ()):
+            lb = tk.Label(col, text=txt_, bg=CARD, fg=fg, font=(FONT, size), anchor="w", justify="left", wraplength=420)
+            lb.pack(fill="x")
+            wdgs.append(lb)
+        if self.voice:
+            for wdg in wdgs:
+                wdg.bind("<Button-1>", lambda e, r=(say or ru): self.voice.say(r))
+
+    def _card(self, it):
+        f = tk.Frame(self.page, bg=CARD, cursor="hand2")
+        f.pack(fill="x", padx=16, pady=3)
+        ws = [f]
+        for txt_, col, size in ((it["ru"], "white", 14), (it["pron"], GOLD, 11), (it["en"], MUTED, 11)):
+            lb = tk.Label(f, text=txt_, bg=CARD, fg=col, font=(FONT, size), anchor="w")
+            lb.pack(fill="x", padx=12, pady=1)
+            ws.append(lb)
+        if self.voice:
+            for wdg in ws:
+                wdg.bind("<Button-1>", lambda e, r=it["ru"]: self.voice.say(r))
+
+    def numbers(self, ordinal_first=False):
+        from ru_numbers import ordinal_suffix, to_ordinal, to_words
         nums = self.data["numbers"]
+        ords = nums.get("ordinals")
         self.clear()
         self.button("←  Back", self.home)
         self.label("Numbers", 20, bold=True)
@@ -270,93 +299,168 @@ class LearnWindow:
         box.pack(fill="x", padx=16, pady=6)
         tk.Label(box, text="Say any number", bg="#15233A", fg="#9CC3FF", font=(FONT, 11, "bold"),
                  anchor="w").pack(fill="x", padx=12, pady=(10, 2))
+        mode = {"ord": bool(ordinal_first and ords)}
+        if ords:
+            seg = tk.Frame(box, bg="#15233A")
+            seg.pack(fill="x", padx=12, pady=(2, 4))
+            b5 = tk.Button(seg, text="5  (five)", bd=0, font=(FONT, 11, "bold"), cursor="hand2", fg="white")
+            b5th = tk.Button(seg, text="5th  (fifth)", bd=0, font=(FONT, 11, "bold"), cursor="hand2", fg="white")
+            b5.pack(side="left", fill="x", expand=True, padx=(0, 3), ipady=3)
+            b5th.pack(side="left", fill="x", expand=True, padx=(3, 0), ipady=3)
         var = tk.StringVar()
         ent = tk.Entry(box, textvariable=var, font=(FONT, 20), bg="#0E1116", fg="white", insertbackground="white",
                        relief="flat")
         ent.pack(fill="x", padx=12, pady=4, ipady=4)
-        words = tk.Label(box, text="Type a number, e.g. 2025", bg="#15233A", fg=MUTED, font=(FONT, 16, "bold"),
-                         anchor="w", justify="left", wraplength=660)
-        words.pack(fill="x", padx=12)
-        pr = tk.Label(box, text="", bg="#15233A", fg=GOLD, font=(FONT, 13), anchor="w", justify="left", wraplength=660)
-        pr.pack(fill="x", padx=12, pady=(0, 6))
-        cur = {"w": ""}
+        out = tk.Frame(box, bg="#15233A")
+        out.pack(fill="x", padx=12, pady=(0, 8))
+
+        def line(text_, label=None):
+            fr = tk.Frame(out, bg="#15233A", cursor="hand2")
+            fr.pack(fill="x", pady=3)
+            ws = [fr]
+            if label:
+                lb = tk.Label(fr, text=label, bg="#15233A", fg="#9CC3FF", font=(FONT, 9), width=16, anchor="w",
+                              justify="left")
+                lb.pack(side="left")
+                ws.append(lb)
+            col = tk.Frame(fr, bg="#15233A")
+            col.pack(side="left", fill="x", expand=True)
+            for txt_, fg, f in ((text_, "white", (FONT, 16, "bold")), (self.pron(text_), GOLD, (FONT, 13))):
+                l2 = tk.Label(col, text=txt_, bg="#15233A", fg=fg, font=f, anchor="w", justify="left", wraplength=520)
+                l2.pack(fill="x")
+                ws.append(l2)
+            if self.voice:
+                sp = tk.Label(fr, text="▶", bg="#15233A", fg="#9CC3FF", font=(FONT, 14))
+                sp.pack(side="right", padx=6)
+                ws.append(sp)
+                for w_ in ws:
+                    w_.bind("<Button-1>", lambda e, r=text_: self.voice.say(r))
 
         def update(*_):
-            t = var.get().replace(",", "").replace(" ", "").strip()
+            for w_ in out.winfo_children():
+                w_.destroy()
+            t = var.get().replace(",", "").replace(" ", "").strip().lower()
+            for suf in ("st", "nd", "rd", "th"):
+                if t.endswith(suf):
+                    t = t[:-2]
             if not t:
-                words.configure(text="Type a number, e.g. 2025", fg=MUTED)
-                pr.configure(text="")
-                cur["w"] = ""
+                tk.Label(out, text="Type a number, e.g. " + ("5 for 5th" if mode["ord"] else "2025"), bg="#15233A",
+                         fg=MUTED, font=(FONT, 13), anchor="w").pack(fill="x")
                 return
             try:
-                w = to_words(int(t))
-                cur["w"] = w
-                words.configure(text=w, fg="white")
-                pr.configure(text=self.pron(w))
-            except Exception:
-                words.configure(text="Whole numbers up to 999,999,999,999", fg=MUTED)
-                pr.configure(text="")
-                cur["w"] = ""
+                n = int(t)
+                if not 0 <= n <= 999_999_999_999:
+                    raise ValueError
+            except ValueError:
+                tk.Label(out, text="Whole numbers up to 999,999,999,999", bg="#15233A", fg=MUTED,
+                         font=(FONT, 13), anchor="w").pack(fill="x")
+                return
+            if not mode["ord"]:
+                line(to_words(n))
+                return
+            tk.Label(out, text=ordinal_suffix(n) + " - the ending matches what you count:", bg="#15233A", fg=MUTED,
+                     font=(FONT, 10), anchor="w").pack(fill="x")
+            for g, lab in (("m", "он · he-words:\nдень, этаж"), ("f", "она · she-words:\nулица"), ("n", "оно · it-words\n& dates")):
+                line(to_ordinal(n, g), lab)
+
+        def set_mode(o):
+            mode["ord"] = o
+            if ords:
+                b5.configure(bg=BTN if o else ACCENT, activebackground=BTN if o else ACCENT)
+                b5th.configure(bg=ACCENT if o else BTN, activebackground=ACCENT if o else BTN)
+            update()
+        if ords:
+            b5.configure(command=lambda: set_mode(False))
+            b5th.configure(command=lambda: set_mode(True))
         var.trace_add("write", update)
-        if self.voice:
-            self.hear_btn = tk.Button(box, text="▶  Hear it", command=lambda: self.voice.say(cur["w"]), bg="#1B2A45",
-                                      fg="#9CC3FF", bd=0, font=(FONT, 12, "bold"), cursor="hand2",
-                                      activebackground="#24385C", activeforeground="#9CC3FF")
-            self.hear_btn.pack(fill="x", padx=12, pady=(0, 10), ipady=4)
+        set_mode(mode["ord"])
         ent.focus_set()
         self.button("Take the numbers quiz (10 questions)", self.number_quiz, GOOD)
         for grp in nums["groups"]:
             self.label(grp["title"], 15, bold=True)
             self.label(grp["note"], 11, MUTED)
             for it in grp["items"]:
-                f = tk.Frame(self.page, bg=CARD, cursor="hand2")
-                f.pack(fill="x", padx=16, pady=3)
-                d = tk.Label(f, text=it["digits"], bg=CARD, fg=ACCENT, font=(FONT, 16, "bold"), width=13, anchor="w")
-                d.pack(side="left", padx=(12, 6), pady=6)
-                col = tk.Frame(f, bg=CARD)
-                col.pack(side="left", fill="x", expand=True)
-                a = tk.Label(col, text=it["ru"], bg=CARD, fg="white", font=(FONT, 13), anchor="w", justify="left",
-                             wraplength=420)
-                a.pack(fill="x")
-                b = tk.Label(col, text=it["pron"], bg=CARD, fg=GOLD, font=(FONT, 11), anchor="w", justify="left",
-                             wraplength=420)
-                b.pack(fill="x", pady=(0, 4))
-                if self.voice:
-                    for wdg in (f, d, col, a, b):
-                        wdg.bind("<Button-1>", lambda e, r=it["ru"]: self.voice.say(r))
+                self._row(it["digits"], it["ru"], it["pron"])
         self.label("How it works", 15, bold=True)
         for t in nums.get("tips", []):
             self.label("• " + t, 12)
+        if not ords:
+            return
+        self.label("1st, 2nd, 3rd…", 20, bold=True)
+        self.label("Ordinal numbers say which one in order. Click any row to hear it.", 11, MUTED)
+        self.button("Take the ordinals quiz (10 questions)", self.ordinal_quiz, GOOD)
+        for grp in ords["groups"]:
+            self.label(grp["title"], 15, bold=True)
+            self.label(grp["note"], 11, MUTED)
+            for it in grp["items"]:
+                self._row(it["digits"], it["ru"], it["pron"], "она %s  ·  оно %s" % (it["ru_f"], it["ru_n"]))
+        self.label("Dates", 15, bold=True)
+        self.label("Day (the -ое form) + month: пятое мая = May 5th.", 11, MUTED)
+        for it in ords["dates"]:
+            self._card(it)
+        self.label("Months", 15, bold=True)
+        self.label("Name of the month · the form used in dates (пятое мая).", 11, MUTED)
+        for m in ords["months"]:
+            self._row(m["en"], "%s  ·  %s" % (m["ru"], m["of"]), "%s  ·  %s" % (m["pron"], m["pron_of"]), say=m["of"],
+                      digits_size=13)
+        self.label("In use", 15, bold=True)
+        for it in ords["examples"]:
+            self._card(it)
+        self.label("How ordinals work", 15, bold=True)
+        for t in ords.get("tips", []):
+            self.label("• " + t, 12)
+
+    def _rnum(self):
+        r = self.rnd.randrange(10)
+        if r < 3:
+            return self.rnd.randrange(20)
+        if r < 5:
+            return 20 + self.rnd.randrange(80)
+        if r < 7:
+            return 100 + self.rnd.randrange(900)
+        if r < 9:
+            return 1000 + self.rnd.randrange(99000)
+        return 100000 + self.rnd.randrange(9900000)
+
+    def _opts(self, num, lowest):
+        opts = [num]
+        while len(opts) < 4:
+            d = self._rnum() if self.rnd.randrange(3) == 0 else max(
+                lowest, num + self.rnd.choice((-1, 1)) * (1 + self.rnd.randrange(max(3, min(num // 3 + 3, 5000)))))
+            if lowest and num <= 20:
+                d = 1 + self.rnd.randrange(20)
+            d = max(lowest, d)
+            if d not in opts:
+                opts.append(d)
+        self.rnd.shuffle(opts)
+        return opts
 
     def number_quiz(self):
         from ru_numbers import format_digits, to_words
-
-        def rnum():
-            r = self.rnd.randrange(10)
-            if r < 3:
-                return self.rnd.randrange(20)
-            if r < 5:
-                return 20 + self.rnd.randrange(80)
-            if r < 7:
-                return 100 + self.rnd.randrange(900)
-            if r < 9:
-                return 1000 + self.rnd.randrange(99000)
-            return 100000 + self.rnd.randrange(9900000)
         qs = []
         for n in range(10):
-            num = rnum()
-            opts = [num]
-            while len(opts) < 4:
-                d = rnum() if self.rnd.randrange(3) == 0 else max(
-                    0, num + self.rnd.choice((-1, 1)) * (1 + self.rnd.randrange(max(3, min(num // 3 + 3, 5000)))))
-                if d not in opts:
-                    opts.append(d)
-            self.rnd.shuffle(opts)
+            num = self._rnum()
+            opts = self._opts(num, 0)
             if n % 2 == 0:
                 qs.append(("How do you say this number?", format_digits(num), to_words(num), [to_words(o) for o in opts]))
             else:
                 qs.append(("Which number is this?", to_words(num), format_digits(num), [format_digits(o) for o in opts]))
         self.question("numbers", qs, 0, 0)
+
+    def ordinal_quiz(self):
+        from ru_numbers import ordinal_suffix, to_ordinal
+        names = {"m": "он", "f": "она", "n": "оно"}
+        qs = []
+        for n in range(10):
+            num = 1 + self.rnd.randrange(20) if n < 6 else max(1, self._rnum())
+            opts = self._opts(num, 1)
+            g = ("f" if n % 2 else "n") if n % 3 == 2 else "m"
+            if n % 2 == 0:
+                qs.append(("How do you say this (%s form)?" % names[g], ordinal_suffix(num), to_ordinal(num, g),
+                           [to_ordinal(o, g) for o in opts]))
+            else:
+                qs.append(("Which one is this?", to_ordinal(num, g), ordinal_suffix(num), [ordinal_suffix(o) for o in opts]))
+        self.question("ordinals", qs, 0, 0)
 
     # ---------- colors ----------
     def colors(self):
@@ -406,7 +510,8 @@ class LearnWindow:
             return self.result(i, score, len(qs))
         prompt, big, answer, choices = qs[n]
         self.clear()
-        back = {"numbers": self.numbers, "colors": self.colors}.get(i) or (lambda: self.lesson(i))
+        back = {"numbers": self.numbers, "colors": self.colors,
+                "ordinals": lambda: self.numbers(True)}.get(i) or (lambda: self.lesson(i))
         self.button("←  Back", back)
         self.label("Question %d of %d   ·   score %d" % (n + 1, len(qs), score), 11, MUTED)
         self.label(prompt, 14)
@@ -443,9 +548,11 @@ class LearnWindow:
             self.save_settings()
         self.clear()
         self.label("Score: %d / %d" % (score, total), 22, bold=True)
-        good = {"numbers": "Great - your numbers are solid!", "colors": "Great - you know your colors!"}.get(
+        good = {"numbers": "Great - your numbers are solid!", "colors": "Great - you know your colors!",
+                "ordinals": "Great - you know your 1st, 2nd, 3rd!"}.get(
             i, "Great - you've got these letters. On to the next lesson!")
         self.label(good if score >= 8 else "Keep practicing, then retake the quiz.", 14)
-        again = {"numbers": self.number_quiz, "colors": self.color_quiz}.get(i) or (lambda: self.start_quiz(i))
+        again = {"numbers": self.number_quiz, "colors": self.color_quiz,
+                 "ordinals": self.ordinal_quiz}.get(i) or (lambda: self.start_quiz(i))
         self.button("Retake quiz", again)
         self.button("Back to lessons", self.home, ACCENT)
