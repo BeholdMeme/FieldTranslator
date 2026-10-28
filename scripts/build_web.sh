@@ -24,7 +24,7 @@ sed -e 's/\bfreeConfig(/freeTtsConfig(/g' "$SHERPA/sherpa-onnx-tts.js" > "$OUT/v
 cp "$ORT/ort.wasm.min.js" "$ORT/ort-wasm-simd-threaded.wasm" "$ORT/ort-wasm-simd-threaded.mjs" "$OUT/vendor/"
 
 # --- icons
-"$PY" "$ROOT/scripts/make_icons.py" "$OUT/icons"
+# icons: web/icons (made once with scripts/make_icons.py)
 
 # --- models (same files as the phone app, plus a small streaming English model:
 #     Vosk has no browser build, so the web app uses sherpa's 20M English Zipformer)
