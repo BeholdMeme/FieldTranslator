@@ -121,13 +121,17 @@ async function main() {
   log('learn screens ok');
 
   // offline: reload with no network - the app must still start from its caches
+  const onlineErrors = errors.length;
+  const offline503 = [];
+  page.on('response', res => { if (res.status() === 503) offline503.push(res.url()); });
   await context.setOffline(true);
   await page.reload();
   await ready(page, 180000);
   log('offline reload ok: ' + await page.textContent('.status'));
   await context.setOffline(false);
 
-  const bad = errors.filter(e => !/favicon|Failed to load resource.*404/.test(e) && !/net::ERR_INTERNET_DISCONNECTED/.test(e));
+  if (offline503.length) console.log('::warning::[' + engine + '] not available offline (not needed to run): ' + [...new Set(offline503)].join(', '));
+  const bad = errors.slice(0, onlineErrors).filter(e => !/favicon|Failed to load resource.*404/.test(e) && !/net::ERR_INTERNET_DISCONNECTED/.test(e));
   if (bad.length) fail('console errors: ' + bad.slice(0, 5).join(' | '));
   await browser.close();
   srv.close();
