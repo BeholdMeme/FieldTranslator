@@ -33,7 +33,7 @@
   const rnd = n => Math.floor(Math.random() * n);
   function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = rnd(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
-  const BASE = 'models/';
+  const BASE = new URL('models/', location.href).href;   // absolute: workers live in js/
   let manifest = null, learn = null, pronouncer = null;
 
   // ------------------------------------------------------------------ workers (simple request/response)
