@@ -51,7 +51,13 @@
         onEvent && onEvent(m);
       } else onEvent && onEvent(m);
     };
-    w.onerror = e => onEvent && onEvent({ type: 'error', message: e.message || 'worker failed to start' });
+    w.onerror = e => {
+      const msg = e.message || 'worker failed to start';
+      // a crashed worker never answers: fail everything that was waiting instead of hanging
+      for (const { reject } of waiting.values()) reject(new Error(msg));
+      waiting.clear();
+      onEvent && onEvent({ type: 'error', message: msg });
+    };
     return {
       call(msg, transfer) {
         const id = ++seq;

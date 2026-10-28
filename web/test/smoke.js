@@ -32,6 +32,18 @@ const fail = msg => { console.log('::error::[' + engine + '] ' + msg); process.e
 const t0 = Date.now();
 const log = m => console.log(`[${engine} ${((Date.now() - t0) / 1000).toFixed(0)}s] ${m}`);
 
+
+// waits until the app is ready, failing fast (with the on-screen message) if loading fails
+async function ready(page, ms) {
+  await page.waitForFunction(() => {
+    const b = document.querySelector('.listen'), st = document.querySelector('.status');
+    return (b && !b.disabled) || (st && /could not|error|stopped/i.test(st.textContent));
+  }, null, { timeout: ms, polling: 500 });
+  const st = await page.textContent('.status').catch(() => '');
+  if (await page.$('.listen[disabled]')) throw new Error('app did not become ready: ' + st);
+}
+const within = (ms, what, p) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(what + ' took over ' + ms / 1000 + ' s')), ms))]);
+
 async function main() {
   const srv = await serve();
   const url = `http://127.0.0.1:${srv.address().port}/`;
@@ -54,11 +66,11 @@ async function main() {
   await page.screenshot({ path: `shot-${engine}-setup.png` });
   log('setup screen ok; downloading models');
   await page.click('.setup .big-btn');
-  await page.waitForSelector('.listen:not([disabled])', { timeout: 15 * 60000 });
+  await ready(page, 10 * 60000);
   log('models downloaded and loaded: ' + await page.textContent('.status'));
   await page.screenshot({ path: `shot-${engine}-translator.png` });
 
-  const r = await page.evaluate(() => window.FTSelfTest());
+  const r = await within(300000, 'self-test', page.evaluate(() => window.FTSelfTest()));
   log('self-test: ' + JSON.stringify(r));
   if (!/ПРИ|при/i.test(r.pron || '')) fail('pronunciation guide: ' + r.pron);
   if (r.number !== 'две тысячи двадцать пять') fail('number words: ' + r.number);
@@ -69,8 +81,8 @@ async function main() {
   // live microphone (Chromium can feed a file in as the mic)
   if (engine === 'chromium') {
     // the self-test switched the recogniser to English; switch direction to reload Russian
-    await page.click('.seg .en'); await page.waitForSelector('.listen:not([disabled])', { timeout: 120000 });
-    await page.click('.seg .ru'); await page.waitForSelector('.listen:not([disabled])', { timeout: 120000 });
+    await page.click('.seg .en'); await ready(page, 120000);
+    await page.click('.seg .ru'); await ready(page, 120000);
     await page.click('.listen');
     try {
       await page.waitForSelector('.card .dst:not(:text("…"))', { timeout: 90000 });
@@ -108,7 +120,7 @@ async function main() {
   // offline: reload with no network - the app must still start from its caches
   await context.setOffline(true);
   await page.reload();
-  await page.waitForSelector('.listen:not([disabled])', { timeout: 180000 });
+  await ready(page, 180000);
   log('offline reload ok: ' + await page.textContent('.status'));
   await context.setOffline(false);
 

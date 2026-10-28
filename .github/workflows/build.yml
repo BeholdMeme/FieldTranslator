@@ -267,11 +267,14 @@ jobs:
 
       - name: Test in Chromium and WebKit (iPhone engine)
         working-directory: web/test
+        timeout-minutes: 20
         run: |
           cp ../../testdata/test.wav ../../site/test/test.wav
-          ok=0
-          node smoke.js ../../site chromium "$PWD/../../testdata/test.wav" || ok=1
-          node smoke.js ../../site webkit "$PWD/../../testdata/test.wav" || ok=1
+          # both browsers at once
+          node smoke.js ../../site chromium "$PWD/../../testdata/test.wav" > chromium.log 2>&1 & c=$!
+          node smoke.js ../../site webkit "$PWD/../../testdata/test.wav" > webkit.log 2>&1 & w=$!
+          ok=0; wait $c || ok=1; wait $w || ok=1
+          cat chromium.log webkit.log
           exit $ok
 
       - uses: actions/upload-artifact@v4
