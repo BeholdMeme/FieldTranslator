@@ -12,7 +12,7 @@ const FILES = [
   'js/app.js', 'js/core.js', 'js/store.js', 'js/speech-worker.js', 'js/mt-worker.js', 'js/mic-worklet.js',
   'vendor/sherpa-onnx-wasm-web.js', 'vendor/sherpa-onnx-wasm-web.wasm',
   'vendor/sherpa-onnx-asr.js', 'vendor/sherpa-onnx-tts.js',
-  'vendor/ort.wasm.min.js', 'vendor/ort-wasm-simd-threaded.wasm',
+  'vendor/ort.wasm.min.js', 'vendor/ort-wasm-simd-threaded.mjs', 'vendor/ort-wasm-simd-threaded.wasm',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
 ];
 
@@ -34,7 +34,16 @@ self.addEventListener('fetch', e => {
   if (url.origin !== location.origin) return;
   // the model list is fetched fresh when online (so updates are seen), cached copy otherwise
   if (url.pathname.endsWith('/models/manifest.json')) {
-    e.respondWith(fetch(req).catch(() => caches.match(req)));
+    e.respondWith((async () => {
+      const shell = await caches.open(SHELL);
+      try {
+        const res = await fetch(req);
+        if (res.ok) await shell.put('models/manifest.json', res.clone());
+        return res;
+      } catch (err) {
+        return (await shell.match('models/manifest.json')) || new Response('offline', { status: 503 });
+      }
+    })());
     return;
   }
   e.respondWith((async () => {
@@ -47,6 +56,6 @@ self.addEventListener('fetch', e => {
       const index = await shell.match('index.html');
       if (index) return index;
     }
-    return fetch(req);
+    try { return await fetch(req); } catch (err) { return new Response('offline', { status: 503 }); }
   })());
 });
