@@ -7,7 +7,8 @@ const fs = require('fs');
 const path = require('path');
 const { chromium, webkit } = require('playwright');
 
-const [site, engine, wav] = process.argv.slice(2);
+const [siteArg, engine, wav] = process.argv.slice(2);
+const site = path.resolve(siteArg);
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css',
   '.wasm': 'application/wasm', '.json': 'application/json', '.png': 'image/png', '.wav': 'audio/wav',
   '.webmanifest': 'application/manifest+json' };
@@ -26,6 +27,7 @@ function serve() {
   });
 }
 
+const pageErrors = [];
 const fail = msg => { console.log('::error::[' + engine + '] ' + msg); process.exitCode = 1; };
 const t0 = Date.now();
 const log = m => console.log(`[${engine} ${((Date.now() - t0) / 1000).toFixed(0)}s] ${m}`);
@@ -41,7 +43,8 @@ async function main() {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2,
     permissions: engine === 'chromium' ? ['microphone'] : [] });
   const page = await context.newPage();
-  const errors = [];
+  const errors = pageErrors;
+  lastPage = page;
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   page.setDefaultTimeout(60000);
@@ -115,4 +118,13 @@ async function main() {
   srv.close();
   log(process.exitCode ? 'FAILED' : 'PASSED');
 }
-main().catch(e => { fail(e.stack || String(e)); process.exit(1); });
+let lastPage = null;
+main().catch(async e => {
+  fail((e.message || String(e)).split('\n')[0]);
+  if (lastPage) {
+    try { await lastPage.screenshot({ path: `shot-${engine}-failure.png` }); } catch (x) { /* ignore */ }
+    try { console.log('::error::[' + engine + '] screen text: ' + (await lastPage.innerText('body')).replace(/\s+/g, ' ').slice(0, 300)); } catch (x) { /* ignore */ }
+  }
+  if (pageErrors.length) console.log('::error::[' + engine + '] page errors: ' + pageErrors.slice(0, 6).join(' | ').slice(0, 900));
+  process.exit(1);
+});
