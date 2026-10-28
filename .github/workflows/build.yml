@@ -112,6 +112,12 @@ jobs:
           path: .model-cache/ru-zipformer/test.wav
           retention-days: 3
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: refs
+          path: build/ref
+          retention-days: 3
+
   windows:
     needs: android
     runs-on: windows-latest
@@ -174,6 +180,119 @@ jobs:
         with:
           name: FieldTranslator-windows
           path: FieldTranslator-Windows.zip
+
+  web:
+    # iPhone / any-browser version, published on GitHub Pages
+    needs: android
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: models
+          path: models
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: testdata
+          path: testdata
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: refs
+          path: build/ref
+
+      - name: Cache speech engine (WebAssembly)
+        id: wasmcache
+        uses: actions/cache@v4
+        with:
+          path: sherpa-wasm
+          key: sherpa-wasm-web-1.13.8-v1
+
+      - name: Build speech engine for browsers (sherpa-onnx -> WebAssembly)
+        if: steps.wasmcache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git ../emsdk
+          ../emsdk/emsdk install 4.0.23
+          ../emsdk/emsdk activate 4.0.23
+          source ../emsdk/emsdk_env.sh
+          git clone --depth 1 -b v1.13.8 https://github.com/k2-fsa/sherpa-onnx.git ../sherpa-onnx
+          cd ../sherpa-onnx
+          # start small and grow as needed (phones can't always reserve 512 MB up front)
+          sed -i 's/INITIAL_MEMORY=512MB/INITIAL_MEMORY=64MB/' wasm/wasm-common.cmake
+          grep -q 'INITIAL_MEMORY=64MB' wasm/wasm-common.cmake
+          sed -i 's/make -j3/make -j4/' build-wasm-simd-web.sh
+          ./build-wasm-simd-web.sh > build.log 2>&1 || { tail -60 build.log | sed 's/^/::error::/'; exit 1; }
+          mkdir -p $GITHUB_WORKSPACE/sherpa-wasm
+          cp build-wasm-simd-web/install/bin/wasm/web/sherpa-onnx-wasm-web.* $GITHUB_WORKSPACE/sherpa-wasm/
+          cp wasm/asr/sherpa-onnx-asr.js wasm/tts/sherpa-onnx-tts.js $GITHUB_WORKSPACE/sherpa-wasm/
+          ls -la $GITHUB_WORKSPACE/sherpa-wasm
+
+      - name: Test tools
+        working-directory: web/test
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium webkit
+          pip install pillow==11.0.0
+
+      - name: Check the web code gives identical results (JavaScript)
+        run: |
+          set -o pipefail
+          STRESS=models/learn/stress.tsv PRON_REF=build/ref/pron.tsv LEARN_JSON=models/learn/learn.json NUM_REF=build/ref/numbers.tsv \
+            node web/test/node_test.js . "models/mt/ru-en::build/ref/ru-en.tsv" "models/mt/en-ru::build/ref/en-ru.tsv" 2>&1 | tee node.log
+          grep -E "cases|Pronunciation|Numbers" node.log | sed 's/^/::notice::/' || true
+
+      - name: Build web app
+        run: scripts/build_web.sh models sherpa-wasm web/test/node_modules/onnxruntime-web/dist site
+
+      - name: Test in Chromium and WebKit (iPhone engine)
+        working-directory: web/test
+        run: |
+          cp ../../testdata/test.wav ../../site/test/test.wav
+          ok=0
+          node smoke.js ../../site chromium "$PWD/../../testdata/test.wav" || ok=1
+          node smoke.js ../../site webkit "$PWD/../../testdata/test.wav" || ok=1
+          exit $ok
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-screenshots
+          path: web/test/shot-*.png
+          retention-days: 7
+
+      - name: Package site
+        run: |
+          rm -rf site/test
+          du -sh site
+          find site -size +95M -print | sed 's/^/::error::file too big for GitHub Pages: /' | grep . && exit 1 || true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  pages:
+    needs: web
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
 
   release:
     needs: [android, windows]

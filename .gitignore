@@ -15,3 +15,7 @@ dist/
 libs/
 app/src/main/jniLibs/
 app/src/main/assets/asr/
+web/test/node_modules/
+web/test/shot-*.png
+site/
+sherpa-wasm/
