@@ -5,6 +5,7 @@
 # SHERPA_WASM_DIR  folder with sherpa-onnx-wasm-web.{js,wasm} + sherpa-onnx-{asr,tts}.js
 # ORT_DIST_DIR     onnxruntime-web 1.20.1 dist/ folder
 set -euo pipefail
+trap 'echo "::error::build_web.sh line $LINENO failed: $BASH_COMMAND"' ERR
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ASSETS="$1"; SHERPA="$2"; ORT="$3"; OUT="$4"
 CACHE="${MODEL_CACHE:-$ROOT/.model-cache}"

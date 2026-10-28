@@ -261,7 +261,9 @@ jobs:
           grep -E "cases|Pronunciation|Numbers" node.log | sed 's/^/::notice::/' || true
 
       - name: Build web app
-        run: scripts/build_web.sh models sherpa-wasm web/test/node_modules/onnxruntime-web/dist site
+        run: |
+          ls models models/* | head -30
+          scripts/build_web.sh models sherpa-wasm web/test/node_modules/onnxruntime-web/dist site
 
       - name: Test in Chromium and WebKit (iPhone engine)
         working-directory: web/test
