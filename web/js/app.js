@@ -290,7 +290,7 @@
     'en-ru': { asr: 'asr-en', mt: 'mt-en-ru', color: 'var(--en)', hint: 'speak English', lang: 'en' },
   };
   const state = {
-    pair: store.get('pair', 'ru-en'), pron: store.get('pron', false), scale: store.get('scale', 1),
+    pair: store.get('pair', 'ru-en'), pron: store.get('pron', true), scale: store.get('scale', 1),
     ready: false, listening: false, loadingFor: null, pending: 0, lastPreview: 0, lastPreviewSrc: '',
   };
   let ui = null;   // translator screen elements
