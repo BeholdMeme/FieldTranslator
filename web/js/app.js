@@ -108,26 +108,12 @@
   }
 
   // ------------------------------------------------------------------ audio out (read aloud)
-  // Playback and microphone use separate audio contexts. On iPhone, a context that has been used
-  // with the mic stays routed to the quiet earpiece (and goes 'interrupted' after the app is
-  // backgrounded), so the voice gets a fresh context whenever the old one may be stuck.
+  // iPhone is happiest when the page never forces an audio mode and uses as few audio engines as
+  // possible: the voice is a plain <audio> clip, the mic has one engine that is reused.
   const AC = window.AudioContext || window.webkitAudioContext;
-  let outCtx = null, outStale = false;
-  function playCtx() {
-    if (outCtx && (outStale || outCtx.state === 'closed' || outCtx.state === 'interrupted')) {
-      try { outCtx.close(); } catch (e) { /* already closed */ }
-      outCtx = null;
-    }
-    outStale = false;
-    if (!outCtx) outCtx = new AC();
-    if (outCtx.state !== 'running') { try { outCtx.resume(); } catch (e) { /* ignore */ } }
-    return outCtx;
-  }
-  document.addEventListener('visibilitychange', () => { if (document.hidden) outStale = true; });
-  window.addEventListener('pageshow', () => { outStale = true; });
-  function audioSession(type) {
-    try { if (navigator.audioSession) navigator.audioSession.type = type; } catch (e) { /* not supported */ }
-  }
+  const audioLog = [];                 // recent audio events, shown in the mic readings line
+  function alog(e) { audioLog.push(e); if (audioLog.length > 8) audioLog.shift(); }
+  try { if (navigator.audioSession) navigator.audioSession.type = 'auto'; } catch (e) { /* not supported */ }
   // The voice plays through a normal <audio> element (like music): on iPhone that goes to the
   // loudspeaker and keeps working in silent mode. Web Audio is only a fallback.
   function wavBlob(samples, rate) {
@@ -153,41 +139,26 @@
       if (p && p.catch) p.catch(() => {});
     } catch (e) { /* ignore */ }
   }
-  let speakSeq = 0, currentSource = null;
+  let speakSeq = 0;
   async function say(text) {
     if (!text || !text.trim()) return;
     const mine = ++speakSeq;
-    if (!state.listening) audioSession('playback');
-    unlockPlayer();
-    let c = null;
-    try { c = playCtx(); } catch (e) { c = null; }   // fallback path, also unlocked by this tap
+    unlockPlayer();                      // inside the tap: allows the play() below on iPhone
     try {
       const speak = () => ttsWorker().call({ cmd: 'speak', text, base: BASE, pack: manifest.packs['tts-ru'] });
       let r;
       try { r = await speak(); } catch (e) { if (!tts || !tts.dead) throw e; r = await speak(); }   // restarted engine
       if (mine !== speakSeq) return;
-      try {
-        const lead = Math.round(r.rate * 0.25);            // 0.25 s lead-in: iPhone can clip the first moment
-        const padded = new Float32Array(lead + r.samples.length);
-        padded.set(r.samples, lead);
-        playerUrl = URL.createObjectURL(wavBlob(padded, r.rate));
-        player.src = playerUrl;
-        await player.play();
-        return;
-      } catch (e) {
-        if (!c) throw e;                // no fallback available
-      }
-      if (c.state !== 'running') { try { await c.resume(); } catch (e) { /* ignore */ } }
-      const buf = c.createBuffer(1, r.samples.length, r.rate);
-      buf.copyToChannel(r.samples, 0);
-      if (currentSource) { try { currentSource.stop(); } catch (e) { /* ended */ } }
-      const src = c.createBufferSource();
-      src.buffer = buf;
-      src.connect(c.destination);
-      src.start();
-      currentSource = src;
+      const lead = Math.round(r.rate * 0.25);            // 0.25 s lead-in: iPhone can clip the first moment
+      const padded = new Float32Array(lead + r.samples.length);
+      padded.set(r.samples, lead);
+      playerUrl = URL.createObjectURL(wavBlob(padded, r.rate));
+      player.src = playerUrl;
+      await player.play();
+      alog('voice played');
     } catch (e) {
-      toast('Voice unavailable: ' + (e && e.message || e), 8000);
+      alog('voice failed: ' + (e && e.name || e));
+      toast('Voice unavailable: ' + (e && e.message || e) + (state.listening ? ' (tap Stop first)' : ''), 8000);
     }
   }
   function toast(msg, ms) {
@@ -417,6 +388,14 @@
     return node;
   }
 
+  let micCtx = null;
+  function micContext() {
+    if (micCtx && (micCtx.state === 'closed')) micCtx = null;
+    if (!micCtx) { micCtx = new AC(); alog('new audio engine'); micCtx.onstatechange = () => alog('audio ' + micCtx.state); }
+    if (micCtx.state !== 'running') { try { micCtx.resume(); } catch (e) { /* ignore */ } }
+    return micCtx;
+  }
+
   async function startListening() {
     if (!state.ready || state.listening) return;
     const lang = DIRS[state.pair].lang;
@@ -426,22 +405,18 @@
       try { await speechFor(lang); } catch (e) { setStatus('Speech engine failed: ' + e.message); return; }
       finally { state.ready = true; refresh(); }
     }
-    audioSession('play-and-record');
     setStatus('Starting microphone…');
-    // an engine started right now, inside the tap, is always allowed to run on iPhone: keep it as a backup
-    let backup = null;
-    try { backup = new AC(); backup.resume(); } catch (e) { backup = null; }
-    let c = null, stream = null;
+    try { player.pause(); } catch (e) { /* ignore */ }   // a voice clip must not hold the audio while the mic starts
+    let stream = null;
+    const c = micContext();               // created/resumed right here, inside the tap
     try {
-      // iPhone: open the mic first, then create the audio engine, so the engine runs at the mic's
-      // current sample rate (an engine made earlier can receive pure silence from the mic)
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-      c = new AC();
+      const tr0 = stream.getAudioTracks()[0];
+      alog('mic ' + (tr0 ? tr0.readyState : 'none'));
       if (c.state !== 'running') {
         try { await Promise.race([c.resume(), sleep(1500)]); } catch (e) { /* checked below */ }
       }
-      if (c.state !== 'running' && backup && backup.state === 'running') { try { c.close(); } catch (e) { /* ignore */ } c = backup; backup = null; }
-      if (backup) { try { backup.close(); } catch (e) { /* ignore */ } backup = null; }
+      alog('audio ' + c.state + ' ' + c.sampleRate);
       const source = c.createMediaStreamSource(stream);
       const sink = c.createGain();
       sink.gain.value = 0;                      // keep the graph running without playing the mic back
@@ -472,22 +447,30 @@
       }
       c.addEventListener('statechange', () => me.events.push('audio ' + c.state));
       me.diagTimer = setInterval(() => showDiag(me), 500);
-      setTimeout(() => {
+      setTimeout(async () => {
         if (mic !== me || !state.listening || me.chunks > 0) return;
+        if (!state.retried) {             // one clean automatic retry before bothering the user
+          state.retried = true;
+          alog('retry');
+          await stopListening();
+          await sleep(400);
+          await startListening();
+          return;
+        }
         // nothing at all arrived: tell the user exactly what the phone reports
         const tr = me.stream.getAudioTracks()[0];
         setStatus('No sound is reaching the app (audio ' + me.ctx.state + ', ' + me.ctx.sampleRate + ' Hz, mic ' +
           (tr ? tr.readyState + (tr.muted ? ' muted' : '') : 'none') + '). Tap Stop, then Listen again.');
+        state.retried = false;
       }, 3000);
       state.listening = true;
+      setTimeout(() => { if (mic === me && me.chunks > 0) state.retried = false; }, 3500);
       setStatus('Listening… ' + DIRS[state.pair].hint);
       refresh();
     } catch (e) {
+      alog('mic error ' + (e.name || e));
       setStatus('Microphone error: ' + (e.name === 'NotAllowedError' ? 'permission denied - allow the microphone in Settings' : (e.name || '') + ' ' + e.message));
       try { if (stream) stream.getTracks().forEach(t => t.stop()); } catch (x) { /* ignore */ }
-      try { if (c) c.close(); } catch (x) { /* ignore */ }
-      try { if (backup) backup.close(); } catch (x) { /* ignore */ }
-      audioSession('playback');
     }
   }
 
@@ -500,7 +483,7 @@
     ui.diag.textContent = 'mic ' + (tr ? tr.readyState + (tr.muted ? ' (muted)' : '') : 'none') +
       ' · audio ' + m.ctx.state + ' ' + m.ctx.sampleRate + ' Hz · ' + (m.node && m.node.port ? 'worklet' : 'processor') +
       ' · chunks ' + m.chunks + ' · peak ' + m.peak.toFixed(3) + ' · session ' + session +
-      (m.events.length ? ' · ' + m.events.slice(-3).join(', ') : '') + ' · v' + APP_VERSION;
+      (m.events.length ? ' · ' + m.events.slice(-3).join(', ') : '') + ' · log: ' + audioLog.slice(-5).join(', ') + ' · v' + APP_VERSION;
     ui.diag.classList.remove('hidden');
   }
 
@@ -532,9 +515,7 @@
       mic.stream.getTracks().forEach(t => t.stop());
     } catch (e) { /* already stopped */ }
     const rate = mic.ctx.sampleRate;
-    try { mic.ctx.close(); } catch (e) { /* ignore */ }
-    audioSession('playback');
-    outStale = true;                     // next voice playback gets a context routed to the speaker
+    try { mic.ctx.suspend(); } catch (e) { /* ignore */ }   // kept for next time: one engine only
     try { await speech.call({ cmd: 'finish', rate }); } catch (e) { /* engine gone; nothing left to finish */ }
     if (ui) { ui.levelI.style.width = '0'; setStatus('Stopped. Tap Listen to continue.'); }
     refresh();
