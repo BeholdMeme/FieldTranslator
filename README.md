@@ -4,6 +4,7 @@ Live Russian ↔ English speech-to-text translation that runs **fully offline** 
 cheap Android phones (built for 3 GB-RAM phones like the Orbic Joy) and a Windows laptop.
 
 **📱 iPhone / any browser: <https://beholdmeme.github.io/FieldTranslator/>** — see [Install on iPhone](#install-on-iphone)
+
 **🤖 Android / 💻 Windows: [download from Releases](https://github.com/BeholdMeme/FieldTranslator/releases/tag/latest)**
 
 * Big toggle: **Russian → English** or **English → Russian**
