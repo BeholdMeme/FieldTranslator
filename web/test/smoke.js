@@ -163,6 +163,11 @@ async function main() {
     if (!want.test(got)) fail('typed translation: ' + text + ' -> ' + got);
   }
   if (!/45 000/.test(await page.textContent('.card:last-child .nums'))) fail('number digits line');
+  for (const b of ['A−', 'A+']) {
+    await page.click('.chips button:has-text("' + b + '")');
+    const fs = parseFloat(await page.$eval('.card:last-child .dst', e => getComputedStyle(e).fontSize));
+    if (!(fs > 12)) fail('text size after ' + b + ': ' + fs);
+  }
   await page.click('.card:last-child .star');
   await page.click('.chips button:has-text("Chats")');
   if ((await page.$$('.learn .numrow')).length < 1) fail('chats list');

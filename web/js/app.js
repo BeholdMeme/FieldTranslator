@@ -267,8 +267,9 @@
     'ru-en': { asr: 'asr-ru', mt: 'mt-ru-en', color: 'var(--ru)', hint: 'speak Russian', lang: 'ru' },
     'en-ru': { asr: 'asr-en', mt: 'mt-en-ru', color: 'var(--en)', hint: 'speak English', lang: 'en' },
   };
+  const validScale = v => (typeof v === 'number' && v >= 0.7 && v <= 2.5 ? v : 1);
   const state = {
-    pair: store.get('pair', 'ru-en'), pron: true,   // pronunciation is always shown scale: store.get('scale', 1),
+    pair: store.get('pair', 'ru-en'), pron: true, scale: validScale(store.get('scale', 1)),   // pronunciation is always shown
     ready: false, listening: false, loadingFor: null, pending: 0, lastPreview: 0, lastPreviewSrc: '',
   };
   let ui = null;   // translator screen elements
@@ -735,7 +736,7 @@
     for (const e of entries) e.pron.classList.toggle('hidden', !e.pron.textContent);
   }
   function setScale(s) {
-    state.scale = Math.max(0.7, Math.min(2.5, s));
+    state.scale = validScale(Math.max(0.7, Math.min(2.5, s)));
     store.set('scale', state.scale);
     document.documentElement.style.setProperty('--scale', state.scale);
   }
