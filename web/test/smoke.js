@@ -152,6 +152,31 @@ async function main() {
   await page.click('button:has-text("Back")');      // Learn -> translator
   await ready(page, 120000);
   await cameraCheck(page, 'online');
+  for (const [text, want] of [['Where is the train station?', /вокзал/i], ['Это стоит сорок пять тысяч рублей', /45,?000/]]) {
+    const n0 = (await page.$$('.card')).length;
+    await page.fill('.compose-in', text);
+    await page.press('.compose-in', 'Enter');
+    await page.waitForFunction(n => { const d = [...document.querySelectorAll('.card .dst')]; return d.length >= n && !d.some(x => x.textContent === '…'); },
+      n0 + 1, { timeout: 180000, polling: 300 });
+    const got = await page.textContent('.card:last-child .dst');
+    log('typed: ' + text + ' -> ' + got);
+    if (!want.test(got)) fail('typed translation: ' + text + ' -> ' + got);
+  }
+  if (!/45 000/.test(await page.textContent('.card:last-child .nums'))) fail('number digits line');
+  await page.click('.card:last-child .star');
+  await page.click('.chips button:has-text("Chats")');
+  if ((await page.$$('.learn .numrow')).length < 1) fail('chats list');
+  await page.click('button:has-text("Saved")');
+  if ((await page.$$('.learn .lcard')).length < 1) fail('saved list');
+  await page.click('button:has-text("Back")');
+  await ready(page, 120000);
+  await page.click('.tb >> nth=0');
+  await page.fill('.conv input >> nth=0', '1000');
+  if (!/тысяча рублей/.test(await page.textContent('.csay'))) fail('converter words');
+  await page.screenshot({ path: `shot-${engine}-converter.png` });
+  await page.click('button:has-text("Back")');
+  await ready(page, 120000);
+  await page.screenshot({ path: `shot-${engine}-main.png` });
 
   // offline: reload with no network - the app must still start from its caches
   const onlineErrors = errors.length;

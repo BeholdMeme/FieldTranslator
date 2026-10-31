@@ -575,7 +575,75 @@
     return n + ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th');
   }
 
-  const api = { SpmTokenizer, MarianTranslator, prepareText, StressDict, Pronouncer, numberToWords, numberToOrdinal, ordinalSuffix, formatDigits, MAX_NUMBER: MAX };
+
+  // ---------------------------------------------------------------- spoken number words -> digits
+  // "сорок пять тысяч рублей" -> "45 000 рублей" (prices, times, phone numbers heard in speech)
+  const NUMW = {};
+  ['ноль', 'один', 'два', 'три', 'четыре', 'пять', 'шесть', 'семь', 'восемь', 'девять'].forEach((w, i) => { NUMW[w] = [i, 1]; });
+  NUMW['одна'] = [1, 1]; NUMW['одно'] = [1, 1]; NUMW['две'] = [2, 1];
+  ['десять', 'одиннадцать', 'двенадцать', 'тринадцать', 'четырнадцать', 'пятнадцать', 'шестнадцать', 'семнадцать',
+    'восемнадцать', 'девятнадцать'].forEach((w, i) => { NUMW[w] = [10 + i, 1.5]; });
+  ['двадцать', 'тридцать', 'сорок', 'пятьдесят', 'шестьдесят', 'семьдесят', 'восемьдесят', 'девяносто']
+    .forEach((w, i) => { NUMW[w] = [20 + 10 * i, 2]; });
+  ['сто', 'двести', 'триста', 'четыреста', 'пятьсот', 'шестьсот', 'семьсот', 'восемьсот', 'девятьсот']
+    .forEach((w, i) => { NUMW[w] = [100 * (i + 1), 3]; });
+  const SCALEW = {};
+  ['тысяча', 'тысячи', 'тысяч', 'тыщ', 'тыщи'].forEach(w => { SCALEW[w] = 1e3; });
+  ['миллион', 'миллиона', 'миллионов'].forEach(w => { SCALEW[w] = 1e6; });
+  ['миллиард', 'миллиарда', 'миллиардов'].forEach(w => { SCALEW[w] = 1e9; });
+
+  const ORDINAL_WORD = /^(перв|втор|трет|четв[её]рт|пят|шест|седьм|восьм|девят|десят|[а-яё]*надцат|двадцат|тридцат|сороков|[а-яё]*десят|девяност|[а-яё]*сот|[а-яё]*тысячн|[а-яё]*миллионн)(ый|ой|ий|ая|ое|ье|ья|ого|его|ому|ему|ом|ем|ую|ых|их|ые|ие|ым|им|ой)$/;
+
+  function groupDigits(n) {
+    const s = String(n);
+    return n >= 10000 ? s.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') : s;
+  }
+
+  /** Replaces runs of Russian number words with digits. Returns { text, changed }. */
+  function wordsToDigits(text) {
+    const toks = text.split(/(\s+)/);
+    const out = [];
+    let changed = false;
+    let i = 0;
+    while (i < toks.length) {
+      const m = /^([А-Яа-яЁё]+)([^А-Яа-яЁё]*)$/.exec(toks[i]);
+      const w = m && m[1].toLowerCase();
+      if (!w || !(w in NUMW || w in SCALEW)) { out.push(toks[i]); i++; continue; }
+      // collect one number: [hundreds][tens][units] [scale] ... with each part only once, biggest first
+      let total = 0, group = 0, last = 9, lastScale = Infinity, words = 0, j = i, tail = '', endTok = i;
+      while (j < toks.length) {
+        const mm = /^([А-Яа-яЁё]+)([^А-Яа-яЁё]*)$/.exec(toks[j]);
+        const ww = mm && mm[1].toLowerCase();
+        if (!ww) break;
+        if (ww in NUMW) {
+          const [v, cls] = NUMW[ww];
+          if (cls >= last || (cls === 1 && last === 1.5) || (v === 0 && words)) break;
+          group += v; last = cls;
+        } else if (ww in SCALEW) {
+          const sc = SCALEW[ww];
+          if (sc >= lastScale) break;
+          total += (group || 1) * sc; group = 0; last = 9; lastScale = sc;
+        } else break;
+        words++; endTok = j; tail = mm[2];
+        if (tail) break;                       // punctuation ends the number
+        j += 2;                                // skip the whitespace token
+      }
+      const value = total + group;
+      // "двадцать пятый" is an ordinal (date, floor): leave the whole phrase as words
+      const after = toks[endTok + 2] && /^([А-Яа-яЁё]+)/.exec(toks[endTok + 2]);
+      const ordinalNext = !tail && after && ORDINAL_WORD.test(after[1].toLowerCase());
+      if (!ordinalNext && (words >= 2 || value >= 10)) {
+        out.push(groupDigits(value) + tail);
+        changed = true;
+      } else {
+        for (let k = i; k <= endTok; k++) out.push(toks[k]);
+      }
+      i = endTok + 1;
+    }
+    return { text: out.join(''), changed };
+  }
+
+  const api = { SpmTokenizer, MarianTranslator, prepareText, StressDict, Pronouncer, numberToWords, numberToOrdinal, ordinalSuffix, formatDigits, wordsToDigits, MAX_NUMBER: MAX };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.FT = api;
 })(typeof self !== 'undefined' ? self : this);

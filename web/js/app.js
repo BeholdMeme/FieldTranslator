@@ -162,8 +162,7 @@
     }
   }
   function toast(msg, ms) {
-    const t = h('div', { style: 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#20252E;' +
-      'border:1px solid #2A303A;padding:10px 16px;border-radius:14px;z-index:9;max-width:90%;text-align:center' }, msg);
+    const t = h('div', { class: 'toast' }, msg);
     document.body.append(t);
     setTimeout(() => t.remove(), ms || 3500);
   }
@@ -189,7 +188,7 @@
         h('div', { class: 'box' }, h('p', {}, 'Could not load the app files. Connect to the internet once to set it up.'))));
       return;
     }
-    if (await packsReady(CORE_PACKS)) { await loadLearn(); showTranslator(); prefetchCamera(); }
+    if (await packsReady(CORE_PACKS)) { await loadLearn(); restoreConvo(); showTranslator(); prefetchCamera(); }
     else showSetup();
   }
 
@@ -244,6 +243,7 @@
         info.textContent = 'Done! Everything now works without internet.';
         await loadLearn();
         await sleep(600);
+        restoreConvo();
         showTranslator();
         prefetchCamera();
       } catch (e) {
@@ -268,7 +268,7 @@
     'en-ru': { asr: 'asr-en', mt: 'mt-en-ru', color: 'var(--en)', hint: 'speak English', lang: 'en' },
   };
   const state = {
-    pair: store.get('pair', 'ru-en'), pron: store.get('pron', true), scale: store.get('scale', 1),
+    pair: store.get('pair', 'ru-en'), pron: true,   // pronunciation is always shown scale: store.get('scale', 1),
     ready: false, listening: false, loadingFor: null, pending: 0, lastPreview: 0, lastPreviewSrc: '',
   };
   let ui = null;   // translator screen elements
@@ -276,39 +276,132 @@
 
   function setStatus(t) { if (ui) ui.status.textContent = t; }
 
+  // ------------------------------------------------------------------ conversations (kept on this phone)
+  const MAX_CONVOS = 30, MAX_ENTRIES = 150;
+  let convos = store.get('convos', []);
+  let current = convos.find(c => c.id === store.get('curConvo', null));
+  function newConvo() {
+    current = { id: Date.now().toString(36), start: Date.now(), entries: [] };
+    convos.unshift(current);
+    store.set('curConvo', current.id);
+  }
+  if (!current) newConvo();
+  let persistTimer = 0;
+  function persist() {
+    clearTimeout(persistTimer);
+    persistTimer = setTimeout(() => {
+      convos = convos.filter(c => c === current || c.entries.length).slice(0, MAX_CONVOS);
+      store.set('convos', convos);
+    }, 250);
+  }
+  let saved = store.get('saved', []);
+  const savedKey = (ru, en) => ru + '␞' + en;
+  function isSaved(ru, en) { return saved.some(x => savedKey(x.ru, x.en) === savedKey(ru, en)); }
+  function toggleSaved(ru, en) {
+    if (isSaved(ru, en)) saved = saved.filter(x => savedKey(x.ru, x.en) !== savedKey(ru, en));
+    else saved.unshift({ id: Date.now().toString(36), ru, en, t: Date.now() });
+    store.set('saved', saved);
+    return isSaved(ru, en);
+  }
+  const fmtWhen = t => {
+    const d = new Date(t);
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ', ' +
+      d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  };
+  const fmtTime = t => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+
+  // keep the bottom bar above the iPhone keyboard
+  if (window.visualViewport) {
+    const fit = () => {
+      document.documentElement.style.setProperty('--appH', window.visualViewport.height + 'px');
+      if (document.activeElement && document.activeElement.classList.contains('compose-in')) window.scrollTo(0, 0);
+    };
+    window.visualViewport.addEventListener('resize', fit);
+    fit();
+  }
+
   function showTranslator() {
     document.documentElement.style.setProperty('--scale', state.scale);
-    const segRu = h('button', { class: 'ru', onclick: () => switchPair('ru-en') }, h('b', {}, 'Русский'), h('span', {}, '→  English'));
-    const segEn = h('button', { class: 'en', onclick: () => switchPair('en-ru') }, h('b', {}, 'English'), h('span', {}, '→  Русский'));
+    const segRu = h('button', { class: 'ru', onclick: () => switchPair('ru-en') }, h('b', {}, 'Русский'), h('span', {}, '→ English'));
+    const segEn = h('button', { class: 'en', onclick: () => switchPair('en-ru') }, h('b', {}, 'English'), h('span', {}, '→ Русский'));
     const convo = h('div', { class: 'convo' });
-    const empty = h('div', { class: 'empty' }, 'Pick a direction, tap Listen,\nand start talking.\n\nTranslations appear here.');
+    const empty = h('div', { class: 'empty' },
+      h('div', { class: 'empty-icon' }, 'Аа'),
+      h('div', { class: 'empty-title' }, 'Tap Listen, or type below'),
+      h('div', {}, 'Type in English or Russian - the app sees which one.'));
     convo.append(empty);
     for (const e of entries) convo.append(e.el);
     const partial = h('div', { class: 'partial hidden' }), preview = h('div', { class: 'preview hidden' });
     const status = h('div', { class: 'status' }, '');
     const diag = h('div', { class: 'diag hidden' }, '');
     const levelI = h('i');
-    const pronBtn = h('button', { class: 'w2', onclick: togglePron });
+    const pronBtn = h('button', { class: 'w2', onclick: () => leaveTo(() => showHistory('history')) }, '💬 Chats');
     const listen = h('button', { class: 'listen', onclick: () => (state.listening ? stopListening() : startListening()) }, 'Loading…');
-    ui = { segRu, segEn, convo, empty, partial, preview, status, diag, levelI, pronBtn, listen };
+    const input = h('input', { class: 'compose-in', type: 'text', placeholder: 'Type English or Русский…', enterkeyhint: 'send',
+      autocomplete: 'off', autocorrect: 'on', spellcheck: 'true', 'aria-label': 'Type to translate' });
+    const send = h('button', { class: 'send', 'aria-label': 'Translate', onpointerdown: e => e.preventDefault(), onclick: () => sendTyped() }, '↑');
+    const app = document.getElementById('app');
+    input.addEventListener('focus', () => app.classList.add('typing'));
+    input.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== input) app.classList.remove('typing'); }, 120));
+    input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); sendTyped(); } });
+    input.addEventListener('input', () => send.classList.toggle('ready', !!input.value.trim()));
+    ui = { segRu, segEn, convo, empty, partial, preview, status, diag, levelI, pronBtn, listen, input, send };
     render(
-      h('div', { class: 'header' }, h('h1', {}, 'Field Translator'), h('span', { class: 'chip-offline' }, '● Offline')),
+      h('div', { class: 'topbar2' },
+        h('div', { class: 'brand' }, h('h1', {}, 'Field Translator'), h('span', { class: 'dot' }, 'Offline')),
+        h('div', { class: 'tbtns' },
+          h('button', { class: 'tb', onclick: () => leaveTo(showConverter), 'aria-label': 'Rubles converter' }, '₽'),
+          h('button', { class: 'tb', onclick: () => leaveTo(() => showHistory('saved')), 'aria-label': 'Saved and history' }, '★'))),
       h('div', { class: 'seg' }, segRu, segEn),
       convo,
       h('div', { class: 'live' }, partial, preview),
       h('div', { class: 'panel' }, status, diag, h('div', { class: 'level' }, levelI),
-        h('div', { class: 'chips' }, pronBtn,
-          h('button', { onclick: () => { if (state.listening) stopListening(); showLearnHome(); } }, 'Learn'),
-          h('button', { onclick: () => setScale(state.scale / 1.15) }, 'A−'),
-          h('button', { onclick: () => setScale(state.scale * 1.15) }, 'A+'),
-          h('button', { onclick: clearConvo }, 'Clear')),
+        h('div', { class: 'compose' }, input, send),
         h('div', { class: 'listenrow' }, h('button', { class: 'cambtn', onclick: openCamera, 'aria-label': 'Read text with the camera' },
-          h('span', {}, '📷'), h('small', {}, 'Read')), listen)));
+          h('span', {}, '📷'), h('small', {}, 'Read')), listen),
+        h('div', { class: 'chips' }, pronBtn,
+          h('button', { onclick: () => leaveTo(showLearnHome) }, 'Learn'),
+          h('button', { onclick: () => setScale(state.scale / 1.15), 'aria-label': 'Smaller text' }, 'A−'),
+          h('button', { onclick: () => setScale(state.scale * 1.15), 'aria-label': 'Bigger text' }, 'A+'),
+          h('button', { onclick: clearConvo }, 'New'))));
     updatePron();
     refresh();
     if (!state.ready || state.loadedPair !== state.pair) loadPair(state.pair);
     else setStatus('Ready. Tap Listen and ' + DIRS[state.pair].hint + '.');
     convo.scrollTop = convo.scrollHeight;
+  }
+
+  async function leaveTo(screen) {
+    if (state.listening) await stopListening();
+    const app = document.getElementById('app');
+    app.classList.remove('typing');
+    screen();
+  }
+
+  // ---- typing: the alphabet decides the direction
+  const CYRILLIC = /[А-Яа-яЁё]/;
+  async function sendTyped() {
+    const text = ui.input.value.trim();
+    if (!text) return;
+    const pair = CYRILLIC.test(text) ? 'ru-en' : 'en-ru';
+    ui.input.value = '';
+    ui.send.classList.remove('ready');
+    if (state.listening) await stopListening();
+    if (pair !== state.pair || !state.ready) {
+      await switchPair(pair);
+      await waitReady(pair);
+    }
+    finalText(pair, text, true);
+  }
+  function waitReady(pair) {
+    return new Promise(resolve => {
+      const t0 = Date.now();
+      const tick = () => {
+        if ((state.ready && state.loadedPair === pair) || Date.now() - t0 > 60000) resolve();
+        else setTimeout(tick, 150);
+      };
+      tick();
+    });
   }
 
   function refresh() {
@@ -345,13 +438,13 @@
   }
 
   async function switchPair(pair) {
-    if (pair === state.pair) return;
+    if (pair === state.pair && (state.ready || state.loadingFor === pair)) return;
     const was = state.listening;
     if (was) await stopListening();
     state.pair = pair;
     store.set('pair', pair);
     state.resume = was;
-    loadPair(pair);
+    return loadPair(pair);
   }
 
   // --- microphone
@@ -568,32 +661,56 @@
     }).catch(() => {});
   }
 
-  function finalText(pair, text) {
-    if (ui) {
+  function finalText(pair, text, typed) {
+    if (ui && !typed) {
       ui.partial.textContent = ''; ui.partial.classList.add('hidden');
       ui.preview.textContent = ''; ui.preview.classList.add('hidden');
     }
-    state.lastPreviewSrc = '';
+    if (!typed) state.lastPreviewSrc = '';
     if (!text.trim()) return;
-    const e = addEntry(pair, text);
-    if (pair === 'ru-en') setRussian(e, text);
-    translate(pair, text).then(res => {
-      e.dst.textContent = res === null ? '(switched language before this was translated)' : (res || '—');
-      if (pair === 'en-ru' && res) setRussian(e, res);
+    const d = { pair, src: text, dst: '', ru: '', nums: '', typed: !!typed, t: Date.now() };
+    // spoken Russian numbers -> digits (prices, times, phone numbers); the translator gets the digits too
+    let mtText = text;
+    if (pair === 'ru-en') {
+      const n = FT.wordsToDigits(text);
+      if (n.changed) { d.nums = n.text; mtText = n.text; }
+      d.ru = text;
+    }
+    current.entries.push(d);
+    while (current.entries.length > MAX_ENTRIES) current.entries.shift();
+    persist();
+    const e = addEntry(d);
+    translate(pair, mtText).then(res => {
+      d.dst = res === null ? '' : (res || '—');
+      e.dst.textContent = res === null ? '(switched language before this was translated)' : d.dst;
+      if (pair === 'en-ru' && res) d.ru = res;
+      if (d.ru) setRussian(e, d.ru);
+      persist();
     }).catch(err => { e.dst.textContent = '[translation error: ' + err.message + ']'; });
   }
 
-  function addEntry(pair, original) {
-    const src = h('div', { class: 'src' }, original);
-    const dst = h('div', { class: 'dst' }, '…');
+  function addEntry(d) {
+    const e = buildCard(d);
+    entries.push(e);
+    while (entries.length > MAX_ENTRIES) entries.shift().el.remove();
+    if (ui) { ui.convo.append(e.el); ui.convo.scrollTop = ui.convo.scrollHeight; refresh(); }
+    return e;
+  }
+
+  function buildCard(d) {
+    const src = h('div', { class: 'src' }, d.src);
+    const nums = h('div', { class: 'nums' + (d.nums ? '' : ' hidden') }, d.nums ? '🔢 ' + d.nums : '');
+    const dst = h('div', { class: 'dst' }, d.dst || '…');
     const pron = h('div', { class: 'pron hidden' });
     const spk = h('button', { class: 'spk', style: 'visibility:hidden', 'aria-label': 'Hear it' }, '🔊');
-    const el = h('div', { class: 'card' }, h('div', { class: 'stripe', style: 'background:' + DIRS[pair].color }),
-      h('div', { class: 'body' }, src, dst, pron), spk);
-    const e = { el, src, dst, pron, spk, russian: '' };
-    entries.push(e);
-    while (entries.length > 150) entries.shift().el.remove();
-    if (ui) { ui.convo.append(el); ui.convo.scrollTop = ui.convo.scrollHeight; refresh(); }
+    const star = h('button', { class: 'star', style: 'visibility:hidden', 'aria-label': 'Save phrase' }, '☆');
+    const ruSide = d.pair === 'ru-en';
+    const el = h('div', { class: 'card ' + (ruSide ? 'from-ru' : 'from-en') },
+      h('div', { class: 'meta' }, h('span', { class: 'tag' }, ruSide ? 'RU → EN' : 'EN → RU'),
+        d.typed ? h('span', { class: 'typed' }, '⌨') : null, h('span', { class: 'time' }, fmtTime(d.t))),
+      ...(ruSide ? [src, pron, nums, dst] : [src, dst, pron]), h('div', { class: 'acts' }, spk, star));
+    const e = { el, src, dst, pron, spk, star, data: d, russian: '' };
+    if (d.ru && (d.dst || ruSide)) setRussian(e, d.ru);
     return e;
   }
 
@@ -603,18 +720,19 @@
     e.pron.classList.toggle('hidden', !state.pron || !e.pron.textContent);
     e.spk.style.visibility = 'visible';
     e.spk.onclick = () => say(ru);
+    const d = e.data;
+    const en = d.pair === 'ru-en' ? d.dst : d.src;
+    if (en && d.dst) {
+      e.star.style.visibility = 'visible';
+      const paint = on => { e.star.textContent = on ? '★' : '☆'; e.star.classList.toggle('on', on); };
+      paint(isSaved(ru, en));
+      e.star.onclick = () => { paint(toggleSaved(ru, en)); toast(isSaved(ru, en) ? 'Saved to ★ Saved' : 'Removed from Saved', 1500); };
+    }
   }
 
-  function togglePron() {
-    state.pron = !state.pron;
-    store.set('pron', state.pron);
-    updatePron();
-  }
   function updatePron() {
     if (!ui) return;
-    ui.pronBtn.textContent = state.pron ? 'Pronounce ✓' : 'Pronounce';
-    ui.pronBtn.classList.toggle('on', state.pron);
-    for (const e of entries) e.pron.classList.toggle('hidden', !state.pron || !e.pron.textContent);
+    for (const e of entries) e.pron.classList.toggle('hidden', !e.pron.textContent);
   }
   function setScale(s) {
     state.scale = Math.max(0.7, Math.min(2.5, s));
@@ -623,7 +741,130 @@
   }
   function clearConvo() {
     entries.splice(0).forEach(e => e.el.remove());
+    if (current.entries.length) { newConvo(); persist(); toast('New conversation. The last one is in 💬 Chats.', 2200); }
     refresh();
+  }
+  // bring back the current conversation when the app opens
+  function restoreConvo() {
+    if (entries.length) return;
+    for (const d of current.entries) entries.push(buildCard(d));
+  }
+
+  // ------------------------------------------------------------------ ★ Saved and History
+  function convoCard(d, opts) {
+    const ruSide = d.pair === 'ru-en';
+    const ru = d.ru || (ruSide ? d.src : d.dst), en = ruSide ? d.dst : d.src;
+    const starBtn = h('button', { class: 'hearlink', style: 'margin-left:18px' }, isSaved(ru, en) ? '★ Saved' : '☆ Save');
+    starBtn.onclick = () => { starBtn.textContent = toggleSaved(ru, en) ? '★ Saved' : '☆ Save'; if (opts && opts.onChange) opts.onChange(); };
+    return h('div', { class: 'lcard' },
+      h('div', { class: 'lbl' }, (ruSide ? 'RU → EN' : 'EN → RU') + (d.typed ? '  ⌨' : '') + '  ·  ' + fmtTime(d.t)),
+      h('div', { class: 'ru' }, ru),
+      state.pron && ru ? h('div', { class: 'pr' }, pronouncer.pronounce(ru)) : null,
+      d.nums ? h('div', { class: 'pr', style: 'color:var(--hear)' }, '🔢 ' + d.nums) : null,
+      h('div', { class: 'en', style: 'font-size:17px;color:var(--text)' }, en || '—'),
+      h('div', {}, ru ? h('button', { class: 'hearlink', onclick: () => say(ru) }, '🔊  Hear it') : null, ru && en ? starBtn : null));
+  }
+
+  function showHistory(tab) {
+    const back = () => showTranslator();
+    const tabs = h('div', { class: 'seg mini' },
+      h('button', { class: tab === 'saved' ? 'on' : '', onclick: () => showHistory('saved') }, '★ Saved  ' + saved.length),
+      h('button', { class: tab === 'history' ? 'on' : '', onclick: () => showHistory('history') }, '💬 Chats  ' + convos.filter(c => c.entries.length).length));
+    let body;
+    if (tab === 'saved') {
+      body = saved.length ? saved.map(x => h('div', { class: 'lcard' },
+        h('div', { class: 'ru' }, x.ru), state.pron ? h('div', { class: 'pr' }, pronouncer.pronounce(x.ru)) : null,
+        h('div', { class: 'en', style: 'font-size:17px;color:var(--text)' }, x.en),
+        h('div', {}, h('button', { class: 'hearlink', onclick: () => say(x.ru) }, '🔊  Hear it'),
+          h('button', { class: 'hearlink', style: 'margin-left:18px;color:var(--muted)', onclick: () => {
+            saved = saved.filter(y => y.id !== x.id); store.set('saved', saved); showHistory('saved');
+          } }, 'Remove'))))
+        : [h('div', { class: 'muted', style: 'margin:18px 4px' }, 'Tap ☆ on any translation to keep it here - addresses, orders, phrases you reuse. Works offline.')];
+    } else {
+      const list = convos.filter(c => c.entries.length);
+      body = list.length ? list.map(c => {
+        const first = c.entries[0];
+        return h('div', { class: 'numrow', onclick: () => showConvo(c) },
+          h('div', { class: 'w' },
+            h('div', { style: 'font-size:16px' }, (first.src.length > 46 ? first.src.slice(0, 46) + '…' : first.src)),
+            h('div', { style: 'color:var(--muted)' }, fmtWhen(c.start) + ' · ' + c.entries.length + ' messages' + (c === current ? ' · current' : ''))),
+          h('div', { style: 'color:var(--muted);font-size:20px' }, '›'));
+      }) : [h('div', { class: 'muted', style: 'margin:18px 4px' }, 'Your conversations will be kept here (last 30).')];
+      if (list.length) {
+        let armed = 0;
+        const clr = h('button', { class: 'btn center', onclick: () => {
+          if (Date.now() - armed > 4000) { armed = Date.now(); clr.textContent = 'Tap again to delete all history'; return; }
+          convos = [current]; current.entries = []; entries.splice(0).forEach(e => e.el.remove());
+          store.set('convos', convos); showHistory('history');
+        } }, 'Clear all history');
+        body.push(clr);
+      }
+    }
+    learnPage(back, h('h2', {}, tab === 'saved' ? 'Saved phrases' : 'Chats'), tabs, body);
+  }
+
+  function showConvo(c) {
+    const del = h('button', { class: 'btn center', onclick: () => {
+      if (c === current) { current.entries = []; entries.splice(0).forEach(e => e.el.remove()); }
+      else convos = convos.filter(x => x !== c);
+      store.set('convos', convos);
+      showHistory('history');
+    } }, 'Delete this conversation');
+    const cont = c === current ? null : h('button', { class: 'btn center accent', onclick: () => {
+      current = c; store.set('curConvo', c.id); entries.splice(0).forEach(e => e.el.remove()); restoreConvo(); showTranslator();
+    } }, 'Continue this conversation');
+    learnPage(() => showHistory('history'),
+      h('h2', {}, 'Conversation'), h('div', { class: 'muted' }, fmtWhen(c.start) + ' · ' + c.entries.length + ' messages'),
+      cont, c.entries.map(d => convoCard(d)), del);
+  }
+
+  // ------------------------------------------------------------------ ₽ rubles converter (offline)
+  function rubleWord(n) {
+    const n100 = n % 100, n10 = n % 10;
+    if (n100 >= 11 && n100 <= 14) return 'рублей';
+    if (n10 === 1) return 'рубль';
+    if (n10 >= 2 && n10 <= 4) return 'рубля';
+    return 'рублей';
+  }
+  function showConverter() {
+    let rate = store.get('rate', 76.7), rateDate = store.get('rateDate', 'Oct 31, 2026');
+    const rub = h('input', { type: 'text', inputmode: 'decimal', placeholder: '0', class: 'cin' });
+    const usd = h('input', { type: 'text', inputmode: 'decimal', placeholder: '0', class: 'cin' });
+    const rateIn = h('input', { type: 'text', inputmode: 'decimal', value: String(rate), class: 'cin small' });
+    const say1 = h('div', { class: 'csay' });
+    const num = v => { const x = parseFloat(String(v).replace(/\s/g, '').replace(',', '.')); return isFinite(x) ? x : NaN; };
+    const fmt = (x, d) => x.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+    function words(r) {
+      say1.replaceChildren();
+      const n = Math.round(r);
+      if (!(n > 0) || n > FT.MAX_NUMBER) return;
+      const w = FT.numberToWords(n) + ' ' + rubleWord(n);
+      say1.append(h('div', { class: 'w' }, w), h('div', { class: 'p' }, pronouncer.pronounce(w)),
+        h('button', { class: 'hearlink', onclick: () => say(w) }, '🔊  Hear it'));
+    }
+    function fromRub() { const r = num(rub.value); usd.value = isFinite(r) ? fmt(r / rate, 2) : ''; words(r); }
+    function fromUsd() { const u = num(usd.value); const r = u * rate; rub.value = isFinite(r) ? fmt(Math.round(r), 0) : ''; words(r); }
+    rub.oninput = fromRub; usd.oninput = fromUsd;
+    rateIn.oninput = () => {
+      const r = num(rateIn.value);
+      if (r > 0) { rate = r; rateDate = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        store.set('rate', rate); store.set('rateDate', rateDate); rateNote.textContent = 'Rate set ' + rateDate; fromRub(); }
+    };
+    const rateNote = h('div', { class: 'muted small' }, 'Rate set ' + rateDate);
+    const quick = [100, 500, 1000, 2000, 5000].map(v => h('button', { class: 'qchip', onclick: () => { rub.value = fmt(v, 0); fromRub(); } }, fmt(v, 0) + ' ₽'));
+    learnPage(showTranslator,
+      h('h2', {}, 'Rubles ⇄ Dollars'),
+      h('div', { class: 'conv' },
+        h('label', {}, h('span', {}, '₽ Rubles'), rub),
+        h('div', { class: 'swap' }, '⇅'),
+        h('label', {}, h('span', {}, '$ Dollars'), usd)),
+      h('div', { class: 'qrow' }, quick),
+      say1,
+      h('div', { class: 'lcard' }, h('div', { class: 'lbl' }, '1 dollar = ? rubles (edit to match the rate you get)'), rateIn, rateNote),
+      h('div', { class: 'muted small', style: 'margin:10px 2px' },
+        'Works offline with the rate you set. Rates change - update it when you exchange money (exchange offices and banks give less than the market rate). ' +
+        'US Visa/Mastercard cards don’t work in Russia, so plan on cash.'));
+    rub.focus();
   }
 
   // ------------------------------------------------------------------ camera reader (js/camera.js)
