@@ -163,6 +163,8 @@ async function main() {
     if (!want.test(got)) fail('typed translation: ' + text + ' -> ' + got);
   }
   if (!/45 000/.test(await page.textContent('.card:last-child .nums'))) fail('number digits line');
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+  await page.waitForSelector('.chips', { state: 'visible' });
   for (const b of ['A−', 'A+']) {
     await page.click('.chips button:has-text("' + b + '")');
     const fs = parseFloat(await page.$eval('.card:last-child .dst', e => getComputedStyle(e).fontSize));
