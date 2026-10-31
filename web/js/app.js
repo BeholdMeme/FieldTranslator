@@ -189,9 +189,12 @@
         h('div', { class: 'box' }, h('p', {}, 'Could not load the app files. Connect to the internet once to set it up.'))));
       return;
     }
-    if (await packsReady(Object.keys(manifest.packs))) { await loadLearn(); showTranslator(); }
+    if (await packsReady(CORE_PACKS)) { await loadLearn(); showTranslator(); prefetchCamera(); }
     else showSetup();
   }
+
+  // the packs the app needs to start; 'ocr' (camera reader) is fetched quietly afterwards
+  const CORE_PACKS = ['learn', 'tts-ru', 'asr-ru', 'asr-en', 'mt-ru-en', 'mt-en-ru'];
 
   async function packsReady(names) {
     for (const n of names) {
@@ -219,7 +222,7 @@
   function isStandalone() { return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; }
 
   function showSetup() {
-    const total = Object.values(manifest.packs).reduce((a, p) => a + p.files.reduce((b, f) => b + f.size, 0), 0);
+    const total = CORE_PACKS.reduce((a, n) => a + manifest.packs[n].files.reduce((b, f) => b + f.size, 0), 0);
     const bar = h('i'), info = h('p', {}, ''), btn = h('button', { class: 'big-btn green' }, 'Download for offline use (' + MB(total) + ')');
     const installHelp = isIOS() && !isStandalone()
       ? h('div', { class: 'box' }, h('b', {}, 'Put it on your Home Screen first'),
@@ -232,7 +235,7 @@
       btn.disabled = true;
       try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) { /* ignore */ }
       const files = [];
-      for (const name of ['learn', 'tts-ru', 'asr-ru', 'asr-en', 'mt-ru-en', 'mt-en-ru']) files.push(...manifest.packs[name].files);
+      for (const name of CORE_PACKS) files.push(...manifest.packs[name].files);
       try {
         await FTStore.downloadAll(BASE, files, (d, t) => {
           bar.style.width = (100 * d / t).toFixed(1) + '%';
@@ -242,6 +245,7 @@
         await loadLearn();
         await sleep(600);
         showTranslator();
+        prefetchCamera();
       } catch (e) {
         info.textContent = 'Download stopped: ' + e.message + '. Tap to continue where it left off.';
         btn.disabled = false;
@@ -298,7 +302,8 @@
           h('button', { onclick: () => setScale(state.scale / 1.15) }, 'A−'),
           h('button', { onclick: () => setScale(state.scale * 1.15) }, 'A+'),
           h('button', { onclick: clearConvo }, 'Clear')),
-        listen));
+        h('div', { class: 'listenrow' }, h('button', { class: 'cambtn', onclick: openCamera, 'aria-label': 'Read text with the camera' },
+          h('span', {}, '📷'), h('small', {}, 'Read')), listen)));
     updatePron();
     refresh();
     if (!state.ready || state.loadedPair !== state.pair) loadPair(state.pair);
@@ -619,6 +624,42 @@
   function clearConvo() {
     entries.splice(0).forEach(e => e.el.remove());
     refresh();
+  }
+
+  // ------------------------------------------------------------------ camera reader (js/camera.js)
+  const loadedScripts = {};
+  function loadScript(src) {
+    if (!loadedScripts[src]) {
+      loadedScripts[src] = new Promise((resolve, reject) => {
+        const el = document.createElement('script');
+        el.src = src;
+        el.onload = resolve;
+        el.onerror = () => { delete loadedScripts[src]; reject(new Error('could not load ' + src)); };
+        document.head.append(el);
+      });
+    }
+    return loadedScripts[src];
+  }
+  const loadCamera = () => Promise.all([loadScript('vendor/tesseract.min.js'), loadScript('js/camera.js')]);
+  function prefetchCamera() {
+    setTimeout(() => { loadCamera().then(() => self.FTCamera.prefetch(manifest, BASE)).catch(() => {}); }, 4000);
+  }
+  async function openCamera() {
+    if (state.listening) await stopListening();
+    try { await loadCamera(); } catch (e) { toast('Camera reader unavailable: ' + e.message, 6000); return; }
+    self.FTCamera.open({
+      h, learnPage, say, manifest, base: BASE, state,
+      back: showTranslator,
+      pronounce: t => { try { return pronouncer.pronounce(t); } catch (e) { return ''; } },
+      async ensureRuEn() {
+        await mtFor('ru-en');
+        if (state.pair !== 'ru-en') { state.ready = false; state.loadedPair = null; }   // reload on return
+      },
+      async translate(text) {
+        if (mtPair !== 'ru-en' || !mt || mt.dead) await mtFor('ru-en');
+        return (await mtWorker().call({ cmd: 'translate', pair: 'ru-en', text })).text;
+      },
+    });
   }
 
   // ------------------------------------------------------------------ learn section

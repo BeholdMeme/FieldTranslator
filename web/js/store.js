@@ -6,6 +6,15 @@
   'use strict';
   const CACHE = 'ft-models-v1';
 
+  // scripts must be stored with a script type or the browser refuses to run them from the cache
+  function typeOf(path) {
+    const p = path.replace(/~[0-9a-f]+$/, '');
+    if (/\.m?js$/.test(p)) return 'text/javascript';
+    if (/\.wasm$/.test(p)) return 'application/wasm';
+    if (/\.json$/.test(p)) return 'application/json';
+    return 'application/octet-stream';
+  }
+
   async function getFile(url, asText) {
     let res = null;
     try {
@@ -60,7 +69,7 @@
             got += value.length;
             progress(done + got, total);
           }
-          await c.put(url, new Response(new Blob(chunks), { headers: { 'Content-Type': 'application/octet-stream' } }));
+          await c.put(url, new Response(new Blob(chunks), { headers: { 'Content-Type': typeOf(f.path) } }));
           done += f.size;
           break;
         } catch (e) {

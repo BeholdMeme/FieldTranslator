@@ -9,9 +9,10 @@ const SHELL = 'ft-shell-' + VERSION;
 const MODELS = 'ft-models-v1';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
-  'js/app.js', 'js/core.js', 'js/store.js', 'js/speech-worker.js', 'js/tts-worker.js', 'js/mt-worker.js',
+  'js/app.js', 'js/core.js', 'js/store.js', 'js/speech-worker.js', 'js/tts-worker.js', 'js/mt-worker.js', 'js/camera.js',
   'vendor/sherpa-onnx-wasm-web.js', 'vendor/sherpa-onnx-wasm-web.wasm',
   'vendor/sherpa-onnx-asr.js', 'vendor/sherpa-onnx-tts.js',
+  'vendor/tesseract.min.js', 'vendor/tesseract-worker.min.js',
   'vendor/ort.wasm.min.js', 'vendor/ort-wasm-simd-threaded.mjs', 'vendor/ort-wasm-simd-threaded.wasm',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
 ];

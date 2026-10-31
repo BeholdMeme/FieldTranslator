@@ -23,6 +23,16 @@ cp "$SHERPA/sherpa-onnx-wasm-web.js" "$SHERPA/sherpa-onnx-wasm-web.wasm" "$SHERP
 sed -e 's/\bfreeConfig(/freeTtsConfig(/g' "$SHERPA/sherpa-onnx-tts.js" > "$OUT/vendor/sherpa-onnx-tts.js"
 cp "$ORT/ort.wasm.min.js" "$ORT/ort-wasm-simd-threaded.wasm" "$ORT/ort-wasm-simd-threaded.mjs" "$OUT/vendor/"
 
+# --- camera reader (Tesseract.js, offline); packages installed next to onnxruntime-web
+NM="$(cd "$ORT/../.." && pwd)"
+TJS="$NM/tesseract.js"
+TCORE="$TJS/node_modules/tesseract.js-core"; [ -d "$TCORE" ] || TCORE="$NM/tesseract.js-core"
+cp "$TJS/dist/tesseract.min.js" "$OUT/vendor/tesseract.min.js"
+cp "$TJS/dist/worker.min.js" "$OUT/vendor/tesseract-worker.min.js"
+mkdir -p "$OUT/models/ocr"
+cp "$TCORE/tesseract-core-simd-lstm.wasm.js" "$TCORE/tesseract-core-lstm.wasm.js" "$OUT/models/ocr/"
+cp "$NM/@tesseract.js-data/rus/4.0.0_best_int/rus.traineddata.gz" "$OUT/models/ocr/"
+
 # --- icons
 # icons: web/icons (made once with scripts/make_icons.py)
 

@@ -44,6 +44,28 @@ async function ready(page, ms) {
 }
 const within = (ms, what, p) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(what + ' took over ' + ms / 1000 + ' s')), ms))]);
 
+
+// camera reader: feed a rendered page of Russian text through "Choose a photo"
+async function cameraCheck(page, label) {
+  const png = await page.evaluate(() => {
+    const c = document.createElement('canvas'); c.width = 1400; c.height = 600;
+    const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 1400, 600); g.fillStyle = '#000'; g.font = '56px sans-serif';
+    ['ДОГОВОР АРЕНДЫ', 'Где находится вокзал?', 'Цена: 45 000 рублей.'].forEach((t, i) => g.fillText(t, 60, 120 + i * 130));
+    return c.toDataURL('image/png').split(',')[1];
+  });
+  await page.click('.cambtn');
+  await page.waitForSelector('.learn input[type=file]', { state: 'attached' });
+  await page.setInputFiles('.learn input[type=file]:not([capture])', { name: 'p.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+  await page.waitForFunction(() => /Done -|Could not|No text/.test((document.querySelector('.learn') || { innerText: '' }).innerText),
+    null, { timeout: 240000, polling: 500 });
+  const en = await page.$$eval('.learn .lcard .en', e => e.map(x => x.textContent));
+  log(label + ' camera: ' + en.join(' | '));
+  if (!en.some(t => /station/i.test(t))) fail(label + ' camera reader: ' + (await page.innerText('.learn')).slice(0, 300).replace(/\s+/g, ' '));
+  await page.screenshot({ path: `shot-${engine}-camera-${label}.png` });
+  await page.click('button:has-text("Back")');
+  await ready(page, 120000);
+}
+
 async function main() {
   const srv = await serve();
   const url = `http://127.0.0.1:${srv.address().port}/`;
@@ -126,6 +148,10 @@ async function main() {
   await page.click('.row2 .accent');
   await page.screenshot({ path: `shot-${engine}-letter.png` });
   log('learn screens ok');
+  await page.click('button:has-text("Back")');      // letter -> Learn
+  await page.click('button:has-text("Back")');      // Learn -> translator
+  await ready(page, 120000);
+  await cameraCheck(page, 'online');
 
   // offline: reload with no network - the app must still start from its caches
   const onlineErrors = errors.length;
@@ -135,6 +161,7 @@ async function main() {
   await page.reload();
   await ready(page, 180000);
   log('offline reload ok: ' + await page.textContent('.status'));
+  await cameraCheck(page, 'offline');
   await context.setOffline(false);
 
   if (offline503.length) console.log('::warning::[' + engine + '] not available offline (not needed to run): ' + [...new Set(offline503)].join(', '));

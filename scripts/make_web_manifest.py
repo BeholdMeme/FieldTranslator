@@ -14,7 +14,11 @@ PACKS = {
     "asr-en": "asr/en-zipformer",
     "mt-ru-en": "mt/ru-en",
     "mt-en-ru": "mt/en-ru",
+    "ocr": "ocr",
 }
+# these packs keep the real file name at the end of the URL (the hash becomes a folder instead),
+# because the camera reader's engine decides how to load a file from its extension
+HASH_AS_FOLDER = {"ocr"}
 
 
 def digest(path):
@@ -33,17 +37,23 @@ def main():
         if not os.path.isdir(base):
             sys.exit("missing model folder " + base)
         files = []
-        for dirpath, _, names in os.walk(base):
+        for dirpath, _, names in list(os.walk(base)):
             for n in sorted(names):
                 full = os.path.join(dirpath, n)
                 inner = os.path.relpath(full, base).replace(os.sep, "/")
                 if inner in ("MODEL_CARD", "README.md", "stress_meta.txt"):
                     continue
                 h = digest(full)
-                # rename on disk to include the hash: name -> name~hash
-                hashed = full + "~" + h
-                os.rename(full, hashed)
-                files.append({"name": inner, "path": rel + "/" + inner + "~" + h, "size": os.path.getsize(hashed)})
+                if name in HASH_AS_FOLDER:
+                    hashed = os.path.join(base, h, inner)
+                    os.makedirs(os.path.dirname(hashed), exist_ok=True)
+                    os.rename(full, hashed)
+                    url = rel + "/" + h + "/" + inner
+                else:
+                    hashed = full + "~" + h
+                    os.rename(full, hashed)
+                    url = rel + "/" + inner + "~" + h
+                files.append({"name": inner, "path": url, "size": os.path.getsize(hashed)})
         files.sort(key=lambda f: f["name"])
         out["packs"][name] = {"files": files}
         print(name, len(files), "files", sum(f["size"] for f in files) // 1048576, "MB")
