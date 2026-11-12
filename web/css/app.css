@@ -183,3 +183,7 @@ ol.steps { padding-left: 22px; color: var(--text); } ol.steps li { margin: 6px 0
 .toast { position: fixed; left: 50%; top: max(14px, env(safe-area-inset-top)); transform: translateX(-50%); z-index: 9;
   background: #232833F2; border: 1px solid var(--border2); padding: 9px 16px; border-radius: 14px; max-width: 90%;
   text-align: center; font-size: 14px; font-weight: 550; box-shadow: 0 8px 24px #00000080; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.lvl { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 6px; margin-right: 4px; vertical-align: 2px; }
+.lvl-rookie { background: #22B57322; color: #5BD69A; } .lvl-amateur { background: #3E8CFF22; color: #7FB0FF; }
+.lvl-pro { background: #F2C14E22; color: var(--gold); }

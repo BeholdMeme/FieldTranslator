@@ -931,6 +931,14 @@
       h('div', { class: 'muted' }, '33 letters. Tap a letter to see and hear it, then work through the lessons in order.'),
       h('h3', {}, 'Alphabet'), grid,
       h('h3', {}, 'Reading lessons'), lessons,
+      learn.grammar ? [h('h3', {}, 'Grammar: how sentences work'),
+        h('div', { class: 'muted small', style: 'margin-bottom:4px' }, 'Rookie → Amateur → Pro. Short lessons with examples and a quiz.'),
+        learn.grammar.map((g, i) => {
+          const b = best('gram' + i), done = (b || 0) >= g.quiz.length - 1;
+          return h('button', { class: 'btn' + (done ? ' good' : ''), onclick: () => showGrammar(i) },
+            h('span', { class: 'lvl lvl-' + g.level.toLowerCase() }, g.level), ' ' + g.title,
+            h('span', { class: 'sub' }, b === undefined ? 'not started' : 'best quiz score ' + b + '/' + g.quiz.length + (done ? '  ✓' : '')));
+        })] : null,
       h('h3', {}, 'Numbers & colors'),
       learn.numbers ? h('button', { class: 'btn', onclick: () => showNumbers(false) }, 'Numbers   ·   say any number') : null,
       learn.colors ? h('button', { class: 'btn', onclick: showColors }, 'Colors   ·   ' + learn.colors.items.length) : null,
@@ -1027,7 +1035,7 @@
       const b = best(key);
       if (b === undefined || score > b) best(key, score);
       learnPage(onBack, h('h2', {}, 'Score: ' + score + ' / ' + qs.length),
-        h('div', { style: 'font-size:18px;margin:8px 0' }, score >= 8 ? goodMsg : 'Keep practicing, then retake the quiz.'),
+        h('div', { style: 'font-size:18px;margin:8px 0' }, score >= Math.ceil(qs.length * 0.8) ? goodMsg : 'Keep practicing, then retake the quiz.'),
         h('button', { class: 'btn center', onclick: again }, 'Retake quiz'),
         h('button', { class: 'btn center accent', onclick: onBack }, 'Back'));
       return;
@@ -1037,7 +1045,7 @@
     const btns = [];
     const next = h('div');
     const big = q.swatch ? h('div', { class: 'swatch-big', style: 'background:' + q.swatch })
-      : h('div', { class: 'flash' + (q.big.length > 14 ? ' long' : '') }, q.big);
+      : q.big ? h('div', { class: 'flash' + (q.big.length > 14 ? ' long' : '') }, q.big) : null;
     for (const c of q.choices) {
       const b = h('button', { class: 'btn' }, c);
       b.onclick = () => {
@@ -1053,6 +1061,32 @@
     }
     learnPage(onBack, h('div', { class: 'muted' }, 'Question ' + (n + 1) + ' of ' + qs.length + '   ·   score ' + score),
       h('div', { style: 'font-size:18px' }, q.prompt), big, btns, fb, next);
+  }
+
+  function showGrammar(i) {
+    const g = learn.grammar[i], n = learn.grammar.length;
+    learnPage(showLearnHome,
+      h('div', { class: 'muted' }, h('span', { class: 'lvl lvl-' + g.level.toLowerCase() }, g.level), '  Lesson ' + (i + 1) + ' of ' + n),
+      h('h2', {}, g.title),
+      h('div', { style: 'font-size:17px;margin:6px 0 10px' }, g.intro),
+      h('h3', {}, 'Key points'),
+      g.points.map(t => h('div', { style: 'margin:7px 0' }, '• ' + t)),
+      h('h3', {}, 'Examples'),
+      g.examples.map(e => h('div', { class: 'lcard' },
+        h('div', { class: 'ru' }, e.ru), h('div', { class: 'pr' }, e.pron),
+        h('div', { class: 'en', style: 'font-size:17px;color:var(--text)' }, e.en),
+        e.note ? h('div', { class: 'muted small', style: 'margin-top:2px' }, '↳ ' + e.note) : null,
+        h('button', { class: 'hearlink', onclick: () => say(e.ru) }, '🔊  Hear it'))),
+      h('button', { class: 'btn center good', onclick: () => grammarQuiz(i) }, 'Take the quiz (' + g.quiz.length + ' questions)'),
+      h('div', { class: 'row2' },
+        h('button', { class: 'btn center', onclick: () => showGrammar((i + n - 1) % n) }, '←  Previous'),
+        h('button', { class: 'btn center accent', onclick: () => showGrammar((i + 1) % n) }, 'Next lesson  →')));
+  }
+
+  function grammarQuiz(i) {
+    const g = learn.grammar[i];
+    const qs = shuffle(g.quiz.map(q => ({ prompt: q.prompt, big: q.shown, answer: q.answer, choices: shuffle([q.answer, ...q.wrong]) })));
+    quiz('gram' + i, qs, () => showGrammar(i), () => grammarQuiz(i), 'Nice - you\'ve got this one. On to the next lesson!');
   }
 
   function showList(key) {

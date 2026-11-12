@@ -16,7 +16,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "laptop"))
 from pronounce import StressDict, pronounce  # noqa: E402
 from phrases_data import (COLOR_EXAMPLES, COLOR_TIPS, COLORS, DATES, DRONES, MILITARY, MONTHS, NUMBER_GROUPS,  # noqa: E402
-                          NUMBER_TIPS, ORDINAL_EXAMPLES, ORDINAL_GROUPS, ORDINAL_TIPS, PHRASES, VERSES)
+                          GRAMMAR, NUMBER_TIPS, ORDINAL_EXAMPLES, ORDINAL_GROUPS, ORDINAL_TIPS, PHRASES, VERSES)
 from ru_numbers import format_digits, ordinal_suffix, to_ordinal, to_words  # noqa: E402
 from pronounce import EXCEPTIONS  # noqa: E402
 
@@ -203,6 +203,10 @@ def main(csv_dir, out_dir):
             it["pron" + key] = pronounce(w, sd)
         return it
     pr = lambda items: [{"ru": ru, "en": en, "pron": pronounce(ru, sd)} for ru, en in items]  # noqa: E731
+    grammar = [{"level": g["level"], "title": g["title"], "intro": g["intro"], "points": g["points"],
+                "examples": [{"ru": ru, "en": en, "note": note, "pron": pronounce(ru, sd)} for ru, en, note in g["examples"]],
+                "quiz": [{"prompt": q, "shown": shown, "answer": a, "wrong": w} for q, shown, a, w in g["quiz"]]}
+               for g in GRAMMAR]
     numbers = {"groups": [{"title": t, "note": note, "items": [num(n) for n in ns]} for t, note, ns in NUMBER_GROUPS],
                "tips": NUMBER_TIPS,
                "ordinals": {"groups": [{"title": t, "note": note, "items": [ordn(n) for n in ns]} for t, note, ns in ORDINAL_GROUPS],
@@ -216,7 +220,7 @@ def main(csv_dir, out_dir):
     data = {"source": "Word list and stress: OpenRussian.org dictionary, CC BY-SA 4.0. "
                       "Bible verses: Russian Synodal translation and King James Version (both public domain).",
             "tips": TIPS, "alphabet": alphabet, "lessons": lessons, "phrases": phrases, "verses": verses,
-            "military": military, "numbers": numbers, "colors": colors,
+            "military": military, "numbers": numbers, "colors": colors, "grammar": grammar,
             # the web app's pronunciation code reads its exception list from here
             "pron_exceptions": EXCEPTIONS}
     with open(os.path.join(out_dir, "learn.json"), "w", encoding="utf-8", newline="\n") as fh:
