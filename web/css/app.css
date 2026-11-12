@@ -187,3 +187,19 @@ ol.steps { padding-left: 22px; color: var(--text); } ol.steps li { margin: 6px 0
   padding: 2px 7px; border-radius: 6px; margin-right: 4px; vertical-align: 2px; }
 .lvl-rookie { background: #22B57322; color: #5BD69A; } .lvl-amateur { background: #3E8CFF22; color: #7FB0FF; }
 .lvl-pro { background: #F2C14E22; color: var(--gold); }
+.stepbar { display: flex; gap: 6px; overflow-x: auto; margin: 10px 0 4px; padding-bottom: 2px; scrollbar-width: none; }
+.stepbar::-webkit-scrollbar { display: none; }
+.stepbar button { flex: none; display: flex; align-items: center; gap: 6px; padding: 7px 11px; border-radius: 12px;
+  background: var(--surface2); border: 1px solid var(--border); font-size: 13px; color: var(--muted); white-space: nowrap; }
+.stepbar button b { width: 20px; height: 20px; border-radius: 50%; background: var(--surface3); display: inline-flex;
+  align-items: center; justify-content: center; font-size: 11px; color: var(--text); }
+.stepbar button.on { border-color: var(--accent); color: var(--text); } .stepbar button.on b { background: var(--accent); }
+.stepbar button.done b { background: var(--green); }
+.sylgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 8px; margin: 10px 0; }
+.sylgrid button { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 10px 4px;
+  display: flex; flex-direction: column; align-items: center; }
+.sylgrid b { font-size: 26px; font-weight: 600; } .sylgrid span { color: var(--gold); font-size: 13px; }
+.readcard { cursor: pointer; } .readcard .ru { font-size: 24px; font-weight: 600; } .readcard.big .ru { font-size: 21px; }
+.readcard .reveal { display: none; } .readcard.shown .reveal { display: block; }
+.readcard .reveal .en { font-size: 16px; color: var(--text); }
+.readcard .tap { color: var(--faint); font-size: 12px; margin-top: 2px; } .readcard.shown .tap { display: none; }

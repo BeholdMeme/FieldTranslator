@@ -922,7 +922,7 @@
       const b = best('lesson' + i);
       const done = (b || 0) >= 8;
       return h('button', { class: 'btn' + (done ? ' good' : ''), onclick: () => showLesson(i) },
-        (i + 1) + '. ' + les.title, h('span', { class: 'sub' }, les.letters.join(' ') + '   ·   ' +
+        (i + 1) + '. ' + les.title, h('span', { class: 'sub' }, (les.letters.length ? les.letters.join(' ') : 'practice') + '   ·   ' +
           (b === undefined ? 'not started' : 'best quiz score ' + b + '/10' + (done ? '  ✓' : ''))));
     });
     const listBtn = (key, title) => learn[key] ? h('button', { class: 'btn', onclick: () => showList(key) }, title + '   ·   ' + learn[key].length) : null;
@@ -975,15 +975,66 @@
 
   const letterObj = u => learn.alphabet.find(x => x.upper === u);
 
+  // tap-to-reveal reading card: read it yourself first, then check
+  function readCard(ru, pron, en, big) {
+    const ans = h('div', { class: 'reveal' }, h('div', { class: 'pr' }, pron), en ? h('div', { class: 'en' }, en) : null);
+    const card = h('div', { class: 'lcard readcard' + (big ? ' big' : '') },
+      h('div', { class: 'ru' }, ru), ans, h('div', { class: 'tap' }, 'Tap to check'));
+    card.onclick = () => {
+      if (!card.classList.contains('shown')) { card.classList.add('shown'); say(ru.toLowerCase()); }
+      else say(ru.toLowerCase());
+    };
+    return card;
+  }
+
   function showLesson(i) {
-    const les = learn.lessons[i];
+    const les = learn.lessons[i], n = learn.lessons.length;
+    let step = 0;
+    const steps = [];
+    if (les.letters.length) steps.push(['Meet the letters', () =>
+      les.letters.map(u => {
+        const l = letterObj(u);
+        return l ? h('div', { class: 'numrow', onclick: () => say(l.name_ru || l.lower) },
+          h('div', { class: 'd', style: 'min-width:72px;font-size:30px' }, l.upper + ' ' + l.lower),
+          h('div', { class: 'w' }, h('div', {}, l.sound), h('div', {}, l.name_say ? 'called ' + l.name_ru + ' (' + l.name_say + ')' : '')),
+          h('div', { style: 'color:var(--hear);font-size:20px' }, '🔊')) : null;
+      })]);
+    if (les.points && les.points.length) steps.push(['The rules', () => les.points.map(t => h('div', { class: 'lcard', style: 'font-size:16px' }, t))]);
+    if (les.syllables && les.syllables.length) steps.push(['Sound out syllables', () => [
+      h('div', { class: 'muted small' }, 'Say each one out loud, then tap to hear it.'),
+      h('div', { class: 'sylgrid' }, les.syllables.map(x => h('button', { onclick: () => say(x.s) }, h('b', {}, x.s), h('span', {}, x.pron))))]]);
+    steps.push(['Read words', () => [
+      h('div', { class: 'muted small' }, 'Read each word yourself, then tap to check it.'),
+      les.words.slice(0, 16).map(w => readCard(w.word, w.pron, w.meaning)),
+      h('button', { class: 'btn center', onclick: () => flashcards(les.words.map(w => ({ ru: w.word, pron: w.pron, en: w.meaning })), () => showLesson(i)) }, 'Practice all words as flashcards')]]);
+    if (les.sentences && les.sentences.length) steps.push(['Read sentences', () => [
+      h('div', { class: 'muted small' }, 'Now whole sentences - only letters you know. Read first, then tap.'),
+      les.sentences.map(x => readCard(x.ru, x.pron, x.en, true))]]);
+    steps.push(['Quiz', () => [
+      h('div', { style: 'font-size:17px;margin:6px 0' }, 'Ready? 10 questions on this lesson.'),
+      h('button', { class: 'btn center good', onclick: () => lessonQuiz(i) }, 'Take the quiz')]]);
+
+    const body = h('div');
+    const bar = h('div', { class: 'stepbar' });
+    const nav = h('div', { class: 'row2' });
+    function draw() {
+      bar.replaceChildren(...steps.map((st, k) => h('button', { class: k === step ? 'on' : k < step ? 'done' : '', onclick: () => { step = k; draw(); } },
+        h('b', {}, k + 1), h('span', {}, st[0]))));
+      body.replaceChildren(h('div', {}, h('h3', {}, 'Step ' + (step + 1) + ' of ' + steps.length + ': ' + steps[step][0]), steps[step][1]()));
+      nav.replaceChildren(
+        h('button', { class: 'btn center', onclick: () => { if (step > 0) { step--; draw(); } else showLearnHome(); } }, step > 0 ? '←  Back a step' : '←  All lessons'),
+        step < steps.length - 1
+          ? h('button', { class: 'btn center accent', onclick: () => { step++; draw(); } }, 'Next step  →')
+          : h('button', { class: 'btn center accent', onclick: () => (i + 1 < n ? showLesson(i + 1) : showLearnHome()) }, i + 1 < n ? 'Next lesson  →' : 'Done'));
+      const el = document.getElementById('learn');
+      if (el) el.scrollTop = 0;
+    }
     learnPage(showLearnHome,
-      h('h2', {}, (i + 1) + '. ' + les.title),
-      h('div', {}, les.intro),
-      h('h3', {}, 'New letters'),
-      les.letters.map(u => { const l = letterObj(u); return l ? lcard(l.upper + ' ' + l.lower, l.sound) : null; }),
-      h('button', { class: 'btn center accent', onclick: () => flashcards(les.words.map(w => ({ ru: w.word, pron: w.pron, en: w.meaning })), () => showLesson(i)) }, 'Practice words (flashcards)'),
-      h('button', { class: 'btn center good', onclick: () => lessonQuiz(i) }, 'Take the quiz (10 questions)'));
+      h('div', { class: 'muted' }, 'Reading lesson ' + (i + 1) + ' of ' + n),
+      h('h2', {}, les.title),
+      h('div', { style: 'font-size:16px;margin:4px 0 8px' }, les.intro),
+      bar, body, nav);
+    draw();
   }
 
   function flashcards(items, onBack, start) {
@@ -1015,18 +1066,22 @@
     const letters = lessons.slice(0, i + 1).flatMap(l => l.letters).map(letterObj).filter(Boolean);
     const newWords = lessons[i].words, newLetters = lessons[i].letters.map(letterObj).filter(Boolean);
     const qs = [];
+    const sents = lessons.slice(0, i + 1).flatMap(l => l.sentences || []), newSents = lessons[i].sentences || [];
     for (let n = 0; n < 10; n++) {
       const t = n % 3;
-      if (t === 0 && newLetters.length && letters.length >= 4) {
+      if (n % 4 === 3 && newSents.length && sents.length >= 4) {
+        const x = newSents[rnd(newSents.length)];
+        qs.push({ prompt: 'What does this sentence mean?', big: x.ru, answer: x.en, choices: pickChoices(x.en, sents.map(y => y.en)) });
+      } else if (t === 0 && newLetters.length && letters.length >= 4) {
         const l = newLetters[rnd(newLetters.length)];
         qs.push({ prompt: 'What sound does this letter make?', big: l.upper + ' ' + l.lower, answer: l.sound, choices: pickChoices(l.sound, letters.map(x => x.sound)) });
       } else if (newWords.length && pool.length >= 4) {
         const w = newWords[rnd(newWords.length)];
-        if (t === 1 || !newLetters.length) qs.push({ prompt: 'How do you read this word?', big: w.word, answer: w.pron, choices: pickChoices(w.pron, pool.map(x => x.pron)) });
+        if (t === 1 || (!newLetters.length && t === 0)) qs.push({ prompt: 'How do you read this word?', big: w.word, answer: w.pron, choices: pickChoices(w.pron, pool.map(x => x.pron)) });
         else qs.push({ prompt: 'What does this word mean?', big: w.word, answer: w.meaning, choices: pickChoices(w.meaning, pool.map(x => x.meaning)) });
       }
     }
-    quiz('lesson' + i, qs, () => showLesson(i), () => lessonQuiz(i), 'Great - you\'ve got these letters. On to the next lesson!');
+    quiz('lesson' + i, qs, () => showLesson(i), () => lessonQuiz(i), lessons[i].letters.length ? 'Great - you\'ve got these letters. On to the next lesson!' : 'Great reading! On to the next lesson.');
   }
 
   function quiz(key, qs, onBack, again, goodMsg, n, score) {
