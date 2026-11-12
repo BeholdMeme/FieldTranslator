@@ -131,8 +131,11 @@ class LearnWindow:
         self.win.bind("<Right>", lambda e: self.show_letter(next_l))
         self.label(l["upper"] + " " + l["lower"], 54, bold=True, center=True)
         self.hear(l.get("name_ru", l["lower"]), label="▶  Hear the letter")
-        self.card("Name", l["name"])
-        self.card("Sound", l["sound"])
+        if l.get("name_say"):
+            self.card("The letter is called", "%s\n%s  -  %s" % (l["name_ru"], l["name_say"], l["name_hint"]))
+        else:
+            self.card("Name", l["name"])
+        self.card("Sound it makes in words", l["sound"])
         self.card("Example", "%s\n%s\n%s" % (l["example"], l["example_pron"], l["example_meaning"]))
         self.hear(l["example"], label="▶  Hear the example word")
         nav = tk.Frame(self.page, bg=BG)

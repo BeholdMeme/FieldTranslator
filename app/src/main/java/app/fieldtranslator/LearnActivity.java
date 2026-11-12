@@ -194,8 +194,10 @@ public class LearnActivity extends Activity {
         big.setGravity(Gravity.CENTER);
         page.addView(big);
         page.addView(speakButton("🔊  Hear the letter", l.optString("name_ru", l.optString("lower"))));
-        page.addView(card("Name", l.optString("name")));
-        page.addView(card("Sound", l.optString("sound")));
+        if (l.has("name_say")) page.addView(card("The letter is called", l.optString("name_ru") + "\n"
+                + l.optString("name_say") + "  -  " + l.optString("name_hint")));
+        else page.addView(card("Name", l.optString("name")));
+        page.addView(card("Sound it makes in words", l.optString("sound")));
         page.addView(card("Example", l.optString("example") + "\n" + l.optString("example_pron")
                 + "\n" + l.optString("example_meaning")));
         page.addView(speakButton("🔊  Hear the example word", l.optString("example")));

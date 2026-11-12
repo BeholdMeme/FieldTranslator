@@ -68,6 +68,23 @@ NAME_RU = {"А": "а", "Б": "бэ", "В": "вэ", "Г": "гэ", "Д": "дэ", "
            "Р": "эр", "С": "эс", "Т": "тэ", "У": "у", "Ф": "эф", "Х": "ха", "Ц": "цэ", "Ч": "чэ", "Ш": "ша",
            "Щ": "ща", "Ъ": "твёрдый знак", "Ы": "ы", "Ь": "мягкий знак", "Э": "э", "Ю": "ю", "Я": "я"}
 
+# how to SAY each letter's name, in English letters (stressed part in capitals for 2-word names),
+# with a short hint that ties it to an English sound
+NAME_SAY = {
+    "А": ("ah", "like the a in father"), "Б": ("beh", "rhymes with meh"), "В": ("veh", "rhymes with meh"),
+    "Г": ("geh", "hard g as in get"), "Д": ("deh", "rhymes with meh"), "Е": ("yeh", "like yeah, cut short"),
+    "Ё": ("yo", "like yo!"), "Ж": ("zheh", "zh = the s in pleasure"), "З": ("zeh", "rhymes with meh"),
+    "И": ("ee", "like the ee in see"), "Й": ("ee KRAHT-kuh-yeh", 'means "short ee"'),
+    "К": ("kah", "like ca in car"), "Л": ("el'", "like L, ending softly"), "М": ("em", "like M"),
+    "Н": ("en", "like N"), "О": ("oh", "like the o in or"), "П": ("peh", "rhymes with meh"),
+    "Р": ("ehr", "with a quick rolled r"), "С": ("es", "like S"), "Т": ("teh", "rhymes with meh"),
+    "У": ("oo", "like the oo in boot"), "Ф": ("ef", "like F"), "Х": ("khah", "breathy kh, like Bach"),
+    "Ц": ("tseh", "ts as in cats + eh"), "Ч": ("cheh", "like the che in check"), "Ш": ("shah", "like sha in shah"),
+    "Щ": ("shchyah", "a long, soft shh + ya"), "Ъ": ("TVYOR-diy znahk", 'means "hard sign" - no sound of its own'),
+    "Ы": ("ih", "like the i in bit, tongue pulled back"), "Ь": ("MYAKH-kiy znahk", 'means "soft sign" - no sound of its own'),
+    "Э": ("eh", "like the e in bet"), "Ю": ("yoo", "like you"), "Я": ("yah", "like yah"),
+}
+
 LESSONS = [
     ("Look the same, sound the same", "А К М О Т",
      "These five letters look and sound almost like English. You can already read real words!"),
@@ -155,6 +172,7 @@ def main(csv_dir, out_dir):
     alphabet = []
     for letter, name, sound, ex, meaning in ALPHABET:
         alphabet.append({"upper": letter, "lower": letter.lower(), "name": name, "name_ru": NAME_RU[letter],
+                         "name_say": NAME_SAY[letter][0], "name_hint": NAME_SAY[letter][1],
                          "say": "%s. %s." % (NAME_RU[letter], ex), "sound": sound,
                          "example": ex, "example_pron": pronounce(ex, sd), "example_meaning": meaning})
 
