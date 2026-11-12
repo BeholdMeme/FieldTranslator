@@ -934,7 +934,7 @@
       learn.grammar ? [h('h3', {}, 'Grammar: how sentences work'),
         h('div', { class: 'muted small', style: 'margin-bottom:4px' }, 'Rookie → Amateur → Pro. Short lessons with examples and a quiz.'),
         learn.grammar.map((g, i) => {
-          const b = best('gram' + i), done = (b || 0) >= g.quiz.length - 1;
+          const b = best('gram:' + g.title), done = (b || 0) >= g.quiz.length - 1;
           return h('button', { class: 'btn' + (done ? ' good' : ''), onclick: () => showGrammar(i) },
             h('span', { class: 'lvl lvl-' + g.level.toLowerCase() }, g.level), ' ' + g.title,
             h('span', { class: 'sub' }, b === undefined ? 'not started' : 'best quiz score ' + b + '/' + g.quiz.length + (done ? '  ✓' : '')));
@@ -1141,7 +1141,7 @@
   function grammarQuiz(i) {
     const g = learn.grammar[i];
     const qs = shuffle(g.quiz.map(q => ({ prompt: q.prompt, big: q.shown, answer: q.answer, choices: shuffle([q.answer, ...q.wrong]) })));
-    quiz('gram' + i, qs, () => showGrammar(i), () => grammarQuiz(i), 'Nice - you\'ve got this one. On to the next lesson!');
+    quiz('gram:' + g.title, qs, () => showGrammar(i), () => grammarQuiz(i), 'Nice - you\'ve got this one. On to the next lesson!');
   }
 
   function showList(key) {
