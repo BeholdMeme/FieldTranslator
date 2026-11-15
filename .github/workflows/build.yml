@@ -410,4 +410,4 @@ jobs:
           [ -f out/FieldTranslator-windows/FieldTranslator-Windows.zip ] && files="$files out/FieldTranslator-windows/FieldTranslator-Windows.zip"
           gh release create latest $files \
             --title "Latest build ($(date -u +%Y-%m-%d))" \
-            --notes "Android: download FieldTranslator.apk on the phone and open it (allow 'install unknown apps'). Laptop: unzip FieldTranslator-Windows.zip and run FieldTranslator.exe. Both work fully offline."
+            --notes "Offline Russian <-> English translator plus a learn-to-read-Russian course: finish the Learn section and you can read basic Russian. Android: download FieldTranslator.apk on the phone and open it (allow 'install unknown apps') - same app as the iPhone version, fully offline. iPhone: open https://beholdmeme.github.io/FieldTranslator/ in Safari and Add to Home Screen. Laptop: unzip FieldTranslator-Windows.zip and run FieldTranslator.exe."

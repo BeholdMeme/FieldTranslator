@@ -1,29 +1,45 @@
 # RU ⇄ EN Field Translator
 
-Live Russian ↔ English speech-to-text translation that runs **fully offline** on iPhone,
-cheap Android phones (built for 3 GB-RAM phones like the Orbic Joy) and a Windows laptop.
+Live Russian ↔ English translation **and a full learn-to-read-Russian course**, running **100% offline**
+on iPhone, Android (built for cheap 3 GB-RAM phones like the Orbic Joy, works on Huawei) and a Windows laptop.
 
-**📱 iPhone / any browser: <https://beholdmeme.github.io/FieldTranslator/>** — see [Install on iPhone](#install-on-iphone)
+> **Work through the Learn section and you'll be able to read basic Russian** - signs, menus, short
+> sentences and a short story - and know how to say what you read.
+
+**📱 iPhone / any browser: <https://beholdmeme.github.io/FieldTranslator/>** - see [Install on iPhone](#install-on-iphone)
 
 **🤖 Android / 💻 Windows: [download from Releases](https://github.com/BeholdMeme/FieldTranslator/releases/tag/latest)**
 
-* Big toggle: **Russian → English** or **English → Russian**
-* Press **LISTEN**: words appear live as they're spoken. Each phrase is translated when
-  the speaker pauses, and a rough live translation shows while they're still talking.
-* No internet permission, no Google services, no accounts. Works on Huawei.
-* `A−` / `A+` change text size (handy for showing the screen to the other person),
-  long-press a translation to copy it.
-* **Pronounce** (learning mode): shows how to say the Russian under each phrase, e.g.
-  *Привет, как дела?* → **pri-VYET, kak di-LA?** (capital syllable = stressed). Off by default.
-* **Read aloud** (🔊 / ▶ hear): an offline Russian voice (Piper "irina") reads letters, words, phrases,
-  verses and the Russian lines in the translator. Loaded only when tapped, unloaded after 2 minutes idle.
-* **Learn to read**: the alphabet (33 letters with sounds and examples), six reading lessons that only
-  use letters you've learned so far, flashcards, and a 10-question quiz per lesson with saved best scores.
-* **Learn** also has 52 common phrases, 20 Bible verses (Synodal + KJV), military phrases and drone
-  warnings, Numbers (say any number, ordinals, dates) and Colors, each with flashcards and quizzes.
-* **iPhone / web extras:** **camera reader** (photo of a Russian sign or menu → English, with
-  pronunciation and voice; photos are never stored), **type to translate** (the alphabet you type picks
-  the direction), conversations saved in **Chats**, ★ phrases into **Saved**, and a **rubles converter**.
+## Translator
+
+* **Listen:** pick **Русский → English** or **English → Русский**, tap Listen, and words appear live
+  as people talk. Each phrase is translated when the speaker pauses.
+* **Type to translate:** type English or Russian - the app sees which alphabet you used and picks the direction.
+* **Every message shows both languages** plus how to say the Russian, e.g. *Привет, как дела?* →
+  **pri-VYET, kak di-LA?** (CAPITAL syllable = stressed), with 🔊 to hear it in an offline Russian voice.
+* **📷 Camera reader:** photograph a sign, menu, label or page → Russian text, pronunciation and English.
+  Photos are never saved; the text results are kept in Recent scans.
+* **💬 Chats** keeps your conversations, **★ Saved** keeps the phrases you reuse.
+* **Spoken numbers as digits:** "сорок пять тысяч рублей" also shows **45 000 рублей**.
+* **₽ converter:** rubles ⇄ dollars with your own rate, and the amount said in Russian.
+* No internet needed, no accounts, no Google services. The Android app has no internet permission at all.
+
+## Learn Russian - from zero to reading
+
+* **Alphabet:** all 33 letters - the letter's Russian name, how to say it in English letters, the sound it
+  makes in words, an example word, and 🔊 for each.
+* **Reading course (9 step-by-step lessons):** each lesson goes *letters → syllables → words → sentences → quiz*,
+  using only letters you've already learned. Read each word or sentence yourself, then tap to check it.
+  The last three lessons teach **how words really sound**, **reading real signs** (ВХОД, ВЫХОД, ОТКРЫТО,
+  АПТЕКА, ОТ СЕБЯ / К СЕБЕ...) and finish with **your first short story** in Russian.
+* **Grammar, Rookie → Amateur → Pro (15 lessons):** no "is / a / the", questions and "not", he/she/it nouns,
+  "I have", left / right / straight (налево vs слева), where / where to / where from, why word endings change,
+  plurals, verb endings, ты vs Вы, walking vs riding, finished vs unfinished verbs, past and future,
+  1 рубль / 2 рубля / 5 рублей, and polite requests. Each lesson has examples with pronunciation and a quiz.
+* **Numbers:** type any number up to 999,999,999,999 and see / hear it in Russian; ordinals (1st, 2nd, 25th...),
+  dates and months.
+* **Colors**, **52 everyday phrases**, **20 Bible verses** (Synodal + KJV), **military phrases and drone warnings** -
+  all with pronunciation, 🔊, flashcards and quizzes with saved best scores.
 
 ## Getting the app
 
@@ -32,12 +48,13 @@ the repo's **Releases** page under `latest`:
 
 | File | For |
 |---|---|
-| `FieldTranslator.apk` | Any ARM Android 7+ phone (Samsung, Xiaomi, Realme, Orbic, Huawei EMUI / HarmonyOS 2–4) |
+| `FieldTranslator.apk` | Any Android 7+ phone (Samsung, Xiaomi, Realme, Orbic, Huawei EMUI / HarmonyOS 2–4). Everything above, built in - no download step |
 | `FieldTranslator-Windows.zip` | Windows 10/11 laptop. Unzip, run `FieldTranslator.exe` |
 
 **Install on a phone:** copy the APK over (USB cable, SD card, USB-C stick, or download it)
 → tap it → allow "Install unknown apps" for your file manager/browser → Install.
-First launch spends ~20–60 s unpacking models; after that it starts in a few seconds.
+The APK installs two icons: **RU ⇄ EN Translator** (the full app, identical to the iPhone version) and
+**Classic Translator** (the original lightweight app, as a backup for very low-memory phones).
 
 **Not supported as an app file:** the newest Huawei phones on HarmonyOS NEXT / 5+ (they can't
 run Android apps). Use the web version below in their browser, or the laptop version.
@@ -87,7 +104,7 @@ CC BY-SA 4.0 (the generated `learn/` data is shared under the same license).
 ## Repo layout
 
 ```
-app/        Android app (MainActivity, ModelInstaller)
+app/        Android app: WebActivity (full app, serves web/ from the APK) + classic MainActivity
 core/       Pure-Java tokenizer + translator, shared by the app; unit tests
 laptop/     Windows/Mac/Linux app (app.py) + Python mirror of the translator
 web/        Offline web app for iPhone / any browser (hosted on GitHub Pages)
@@ -105,6 +122,8 @@ scripts/    fetch_models.sh (downloads models), prepare_mt.py, make_reference.py
 6. Russian speech recognition is run on a real Russian recording in Python and in the phone's Java code; both must produce the same text.
 7. The built Windows app runs a self-test (loads models, translates both directions).
 8. The web app is tested in Chromium and WebKit (Safari's engine), including offline.
+9. The finished APK is installed on an Android emulator and runs a self-test: speech recognition,
+   translation, voice and learning data, then the classic app is started too.
 
 ## Building locally (optional)
 
