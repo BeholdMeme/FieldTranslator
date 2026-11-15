@@ -108,6 +108,14 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
+          name: native-libs
+          path: |
+            libs/sherpa-onnx-jvm.jar
+            app/src/main/jniLibs
+          retention-days: 3
+
+      - uses: actions/upload-artifact@v4
+        with:
           name: testdata
           path: .model-cache/ru-zipformer/test.wav
           retention-days: 3
@@ -182,12 +190,26 @@ jobs:
           path: FieldTranslator-Windows.zip
 
   web:
-    # iPhone / any-browser version, published on GitHub Pages
+    # iPhone / any-browser version, published on GitHub Pages; the same app is also packed into the Android APK
     needs: android
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 150
+    outputs:
+      deploy: ${{ steps.webchanged.outputs.deploy }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Did the iPhone app change?
+        id: webchanged
+        run: |
+          # only republish the iPhone site when its own code or learning data changed
+          if git diff --name-only HEAD~1 HEAD | grep -qE '^(web/|scripts/|laptop/pronounce.py|laptop/ru_numbers.py)'; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"; echo "iPhone app changed - will publish"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"; echo "::notice::iPhone app unchanged - site not republished"
+          fi
 
       - uses: actions/setup-python@v5
         with:
@@ -284,6 +306,66 @@ jobs:
           path: web/test/shot-*.png
           retention-days: 7
 
+      # ---------------- Android: the same app inside the APK (plus the classic app as a backup)
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-libs
+          path: .
+
+      - name: Build Android app (full app inside)
+        run: |
+          set -o pipefail
+          ls libs/sherpa-onnx-jvm.jar app/src/main/jniLibs/*/libsherpa-onnx-jni.so
+          A=app/src/main/assets
+          rm -rf "$A"; mkdir -p "$A"; cp -r models/. "$A/"
+          mkdir -p "$A/web"
+          # the big models are already in the APK for the classic app; the web app reads those same files
+          rsync -a site/ "$A/web/" --exclude 'models/asr/ru-zipformer' --exclude 'models/mt' \
+            --exclude 'models/tts' --exclude 'models/learn' --exclude '.nojekyll'
+          mkdir -p "$A/web/test" && cp testdata/test.wav "$A/web/test/test.wav"
+          du -sh "$A" "$A/web"
+          ./gradlew :app:assembleRelease --no-daemon 2>&1 | tee apk.log || {
+            grep -E "error:|FAILED|What went wrong" -A3 apk.log | head -40 | sed 's/^/::error::/'; exit 1; }
+          cp app/build/outputs/apk/release/app-release.apk FieldTranslator.apk
+          ls -la FieldTranslator.apk
+
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Test the APK on an Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          arch: x86_64
+          target: google_apis
+          ram-size: 4096M
+          disk-size: 6000M
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: bash ci/android_selftest.sh FieldTranslator.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FieldTranslator-apk-full
+          path: FieldTranslator.apk
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-screens
+          path: android-*.png
+          retention-days: 7
+
       - name: Package site
         run: |
           rm -rf site/test
@@ -291,11 +373,13 @@ jobs:
           find site -size +95M -print | sed 's/^/::error::file too big for GitHub Pages: /' | grep . && exit 1 || true
 
       - uses: actions/upload-pages-artifact@v3
+        if: steps.webchanged.outputs.deploy == 'true'
         with:
           path: site
 
   pages:
     needs: web
+    if: needs.web.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -308,9 +392,9 @@ jobs:
         uses: actions/deploy-pages@v4
 
   release:
-    needs: [android, windows]
+    needs: [android, windows, web]
     # publish the APK even if the laptop build fails
-    if: always() && needs.android.result == 'success'
+    if: always() && needs.android.result == 'success' && needs.web.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -322,7 +406,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest -y --cleanup-tag || true
-          files="out/FieldTranslator-apk/FieldTranslator.apk"
+          files="out/FieldTranslator-apk-full/FieldTranslator.apk"
           [ -f out/FieldTranslator-windows/FieldTranslator-Windows.zip ] && files="$files out/FieldTranslator-windows/FieldTranslator-Windows.zip"
           gh release create latest $files \
             --title "Latest build ($(date -u +%Y-%m-%d))" \

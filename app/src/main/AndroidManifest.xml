@@ -4,6 +4,7 @@
     <!-- The only permission: the microphone. No INTERNET permission at all,
          so the app physically cannot send anything anywhere. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
     <application
@@ -13,10 +14,25 @@
         android:largeHeap="true"
         android:supportsRtl="false"
         android:theme="@style/AppTheme">
+        <!-- The full app (same as the iPhone version) -->
+        <activity
+            android:name=".WebActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <!-- The original lightweight app, kept as a backup for very low-memory phones -->
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize"
             android:exported="true"
+            android:label="Classic Translator"
+            android:taskAffinity="app.fieldtranslator.classic"
             android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -27,5 +43,10 @@
             android:name=".LearnActivity"
             android:exported="false"
             android:label="Learn to read Russian" />
+        <provider
+            android:name=".PhotoProvider"
+            android:authorities="app.fieldtranslator.photo"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>
