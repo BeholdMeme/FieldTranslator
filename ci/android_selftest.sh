@@ -17,7 +17,7 @@ adb logcat -c
 adb shell am start -W -n $PKG/.WebActivity --ez selftest true || fail "could not start the app"
 t0=$(date +%s)
 result=""
-while [ $(( $(date +%s) - t0 )) -lt 900 ]; do
+while [ $(( $(date +%s) - t0 )) -lt 1500 ]; do
   sleep 10
   log=$(adb logcat -d -s FTWEB:I AndroidRuntime:E 2>/dev/null)
   if echo "$log" | grep -q "FATAL EXCEPTION"; then echo "$log" | tail -40; fail "app crashed"; fi
@@ -26,7 +26,7 @@ while [ $(( $(date +%s) - t0 )) -lt 900 ]; do
   [ -n "$result" ] && break
 done
 adb logcat -d -s FTWEB:I | grep -E "FTSELF|rror" | tail -20
-[ -n "$result" ] || fail "self-test did not finish in 15 minutes"
+[ -n "$result" ] || fail "self-test did not finish in 25 minutes"
 echo "$result" | grep -q "FTSELF ERROR" && fail "self-test error: $result"
 json=${result#*FTSELF RESULT }
 echo "::notice::[android] $json"

@@ -193,20 +193,25 @@ jobs:
     # iPhone / any-browser version, published on GitHub Pages; the same app is also packed into the Android APK
     needs: android
     runs-on: ubuntu-24.04
-    timeout-minutes: 150
+    timeout-minutes: 90
     outputs:
       deploy: ${{ steps.webchanged.outputs.deploy }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Did the iPhone app change?
         id: webchanged
         run: |
-          # only republish the iPhone site when its own code or learning data changed
-          if git diff --name-only HEAD~1 HEAD | grep -qE '^(web/|scripts/|laptop/pronounce.py|laptop/ru_numbers.py)'; then
-            echo "deploy=true" >> "$GITHUB_OUTPUT"; echo "iPhone app changed - will publish"
+          # compare with the build that is live on the iPhone site right now; republish only if the
+          # iPhone app's own code or learning data changed since then
+          live=$(curl -fsL https://beholdmeme.github.io/FieldTranslator/js/app.js | grep -o "APP_VERSION = '[^']*'" | grep -o -- '-[0-9a-f]*' | tr -d -)
+          echo "live build: ${live:-unknown}"
+          if [ -z "$live" ] || ! git cat-file -e "$live^{commit}" 2>/dev/null; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"; echo "live build unknown - will publish"
+          elif git diff --name-only "$live" HEAD | grep -qE '^(web/|scripts/|laptop/pronounce.py|laptop/ru_numbers.py)'; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"; echo "iPhone app changed since $live - will publish"
           else
             echo "deploy=false" >> "$GITHUB_OUTPUT"; echo "::notice::iPhone app unchanged - site not republished"
           fi
@@ -306,7 +311,48 @@ jobs:
           path: web/test/shot-*.png
           retention-days: 7
 
-      # ---------------- Android: the same app inside the APK (plus the classic app as a backup)
+      - name: Package site
+        run: |
+          rm -rf site/test
+          du -sh site
+          find site -size +95M -print | sed 's/^/::error::file too big for GitHub Pages: /' | grep . && exit 1 || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: site
+          include-hidden-files: true
+          retention-days: 3
+
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.webchanged.outputs.deploy == 'true'
+        with:
+          path: site
+
+  apk:
+    # Android: the same app as the iPhone version inside the APK (plus the classic app as a backup).
+    # Separate from the iPhone site so a slow Android test can never hold up an iPhone update.
+    needs: [android, web]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: models
+          path: models
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: testdata
+          path: testdata
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: site
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -366,16 +412,6 @@ jobs:
           path: android-*.png
           retention-days: 7
 
-      - name: Package site
-        run: |
-          rm -rf site/test
-          du -sh site
-          find site -size +95M -print | sed 's/^/::error::file too big for GitHub Pages: /' | grep . && exit 1 || true
-
-      - uses: actions/upload-pages-artifact@v3
-        if: steps.webchanged.outputs.deploy == 'true'
-        with:
-          path: site
 
   pages:
     needs: web
@@ -392,9 +428,9 @@ jobs:
         uses: actions/deploy-pages@v4
 
   release:
-    needs: [android, windows, web]
+    needs: [android, windows, apk]
     # publish the APK even if the laptop build fails
-    if: always() && needs.android.result == 'success' && needs.web.result == 'success'
+    if: always() && needs.android.result == 'success' && needs.apk.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
